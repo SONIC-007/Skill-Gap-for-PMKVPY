@@ -1,269 +1,502 @@
 "use client";
-import { useEffect, useState } from "react";
+
+import { useState, useEffect, useCallback } from "react";
 import Link from "next/link";
 import { DashboardLayout } from "@/components/layout/dashboard-layout";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Badge } from "@/components/ui/badge";
-import { Plus, Trash2, ArrowLeft, Eye, Loader2, Search, X, } from "lucide-react";
+import { Textarea } from "@/components/ui/textarea";
+import { Progress } from "@/components/ui/progress";
+import {
+  Briefcase,
+  Plus,
+  Search,
+  Eye,
+  Trash2,
+  X,
+  ArrowLeft,
+  IndianRupee,
+} from "lucide-react";
+
+const DOMAINS = [
+  "Web Development",
+  "Data Science",
+  "Artificial Intelligence",
+  "Cybersecurity",
+  "Cloud Computing",
+  "Digital Marketing",
+  "Electric Vehicle Technology",
+  "General",
+];
+
+const DEMAND_STYLES = {
+  HIGH: "border-[#A7F3D0] bg-[#ECFDF5] text-[#065F46]",
+  "VERY HIGH": "border-[#A7F3D0] bg-[#ECFDF5] text-[#065F46]",
+  MEDIUM: "border-[#FDE68A] bg-[#FFFBEB] text-[#92400E]",
+  LOW: "border-[#CBD5E1] bg-[#F1F5F9] text-[#475569]",
+};
+
 export default function AdminJobRolesPage() {
-    const [jobRoles, setJobRoles] = useState([]);
-    const [loading, setLoading] = useState(true);
-    const [search, setSearch] = useState("");
-    const [selectedRoleDetail, setSelectedRoleDetail] = useState(null);
-    const [showAddModal, setShowAddModal] = useState(false);
-    const [newRole, setNewRole] = useState({
-        title: "",
-        domain: "Web Development",
-        description: "",
-        minExperience: "0-2 Years",
-        avgSalary: "₹6,00,000 - ₹10,00,000",
-        demandLevel: "High",
-    });
-    const [creating, setCreating] = useState(false);
-    const fetchJobRoles = () => {
-        fetch("/api/admin/job-roles")
-            .then((res) => res.json())
-            .then((data) => {
-            setJobRoles(data.jobRoles || []);
-            setLoading(false);
-        })
-            .catch((err) => {
-            console.error(err);
-            setLoading(false);
+  const [jobRoles, setJobRoles] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [searchQuery, setSearchQuery] = useState("");
+  const [selectedRole, setSelectedRole] = useState(null);
+  const [showAddModal, setShowAddModal] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
+  const [deletingId, setDeletingId] = useState(null);
+  const [formData, setFormData] = useState({
+    title: "",
+    domain: DOMAINS[0],
+    description: "",
+    minExperience: "0-2 Years",
+    avgSalary: "₹4L – ₹8L",
+    demandLevel: "HIGH",
+  });
+
+  const fetchJobRoles = useCallback(async () => {
+    setLoading(true);
+    try {
+      const res = await fetch("/api/admin/job-roles");
+      if (res.ok) {
+        const data = await res.json();
+        setJobRoles(data.jobRoles || []);
+      }
+    } catch (error) {
+      console.error("Failed to fetch job roles:", error);
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    fetchJobRoles();
+  }, [fetchJobRoles]);
+
+  const handleAddRole = async (e) => {
+    e.preventDefault();
+    if (!formData.title.trim()) return;
+    setSubmitting(true);
+    try {
+      const res = await fetch("/api/admin/job-roles", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(formData),
+      });
+      if (res.ok) {
+        setFormData({
+          title: "",
+          domain: DOMAINS[0],
+          description: "",
+          minExperience: "0-2 Years",
+          avgSalary: "₹4L – ₹8L",
+          demandLevel: "HIGH",
         });
-    };
-    useEffect(() => {
-        fetchJobRoles();
-    }, []);
-    const handleCreateRole = async (e) => {
-        e.preventDefault();
-        if (!newRole.title || !newRole.domain)
-            return;
-        setCreating(true);
-        try {
-            const res = await fetch("/api/admin/job-roles", {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify(newRole),
-            });
-            if (!res.ok)
-                throw new Error("Failed to create job role");
-            setShowAddModal(false);
-            setNewRole({
-                title: "",
-                domain: "Web Development",
-                description: "",
-                minExperience: "0-2 Years",
-                avgSalary: "₹6,00,000 - ₹10,00,000",
-                demandLevel: "High",
-            });
-            fetchJobRoles();
-        }
-        catch (err) {
-            alert(err.message || "Failed to create role");
-        }
-        finally {
-            setCreating(false);
-        }
-    };
-    const handleDeleteRole = async (id) => {
-        if (!confirm("Are you sure you want to delete this job role?"))
-            return;
-        try {
-            const res = await fetch(`/api/admin/job-roles?id=${id}`, {
-                method: "DELETE",
-            });
-            if (!res.ok)
-                throw new Error("Failed to delete job role");
-            fetchJobRoles();
-        }
-        catch (err) {
-            alert(err.message || "Error deleting job role");
-        }
-    };
-    const filteredRoles = jobRoles.filter((jr) => jr.title.toLowerCase().includes(search.toLowerCase()) ||
-        jr.domain.toLowerCase().includes(search.toLowerCase()));
-    return (<DashboardLayout>
-      <div className="space-y-8 max-w-7xl mx-auto pb-16">
+        setShowAddModal(false);
+        await fetchJobRoles();
+      }
+    } catch (error) {
+      console.error("Failed to create job role:", error);
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const handleDeleteRole = async (id) => {
+    setDeletingId(id);
+    try {
+      const res = await fetch(
+        `/api/admin/job-roles?id=${encodeURIComponent(id)}`,
+        { method: "DELETE" }
+      );
+      if (res.ok) {
+        setJobRoles((prev) => prev.filter((r) => r.id !== id));
+      }
+    } catch (error) {
+      console.error("Error deleting job role:", error);
+    } finally {
+      setDeletingId(null);
+    }
+  };
+
+  const filteredRoles = jobRoles.filter((role) => {
+    if (!searchQuery.trim()) return true;
+    const q = searchQuery.toLowerCase();
+    return (
+      role.title?.toLowerCase().includes(q) ||
+      role.domain?.toLowerCase().includes(q) ||
+      role.description?.toLowerCase().includes(q)
+    );
+  });
+
+  return (
+    <DashboardLayout>
+      <div className="space-y-6">
         {/* Header */}
-        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+        <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between border-b border-[#E2E8F0] pb-5">
           <div>
-            <div className="flex items-center gap-2 text-xs font-semibold text-slate-500 mb-1">
-              <Link href="/admin" className="hover:text-blue-900 flex items-center gap-1">
-                <ArrowLeft className="h-3 w-3"/> Admin Dashboard
+            <div className="flex items-center gap-2 font-mono text-[11px] font-semibold uppercase tracking-[0.06em] text-[#64748B]">
+              <Link href="/admin" className="hover:text-[#4F46E5]">
+                ADMIN
               </Link>
               <span>/</span>
-              <span>Job Roles</span>
+              <span className="text-[#4F46E5]">NSQF JOB ROLES</span>
             </div>
-            <h1 className="text-3xl font-bold text-blue-950">Job Role & Qualification Profiles</h1>
-            <p className="text-slate-600">
-              Configure job profiles, salary benchmarks, and prerequisite skill requirements.
+            <h1 className="mt-1.5 font-display text-2xl sm:text-[28px] font-bold tracking-[-0.025em] text-[#0F172A]">
+              Manage Target Job Roles
+            </h1>
+            <p className="mt-1 text-[14px] text-[#475569]">
+              Configure Qualification Pack benchmarks, salary bands, and required competency thresholds.
             </p>
           </div>
 
-          <Button onClick={() => setShowAddModal(true)} className="bg-blue-900 hover:bg-blue-800">
-            <Plus className="h-4 w-4 mr-1.5"/>
-            Create Job Role
-          </Button>
+          <div className="flex items-center gap-2.5">
+            <Link href="/admin">
+              <Button variant="outline" size="sm">
+                <ArrowLeft className="mr-1.5 h-3.5 w-3.5" />
+                Console
+              </Button>
+            </Link>
+            <Button size="sm" onClick={() => setShowAddModal(true)}>
+              <Plus className="mr-1.5 h-3.5 w-3.5" />
+              Add Job Role
+            </Button>
+          </div>
         </div>
 
-        {/* Search */}
-        <Card className="border-blue-100 shadow-sm">
-          <CardContent className="p-4">
-            <div className="relative">
-              <Search className="absolute left-3 top-2.5 h-4 w-4 text-slate-400"/>
-              <Input placeholder="Search job roles by title or domain..." className="pl-9" value={search} onChange={(e) => setSearch(e.target.value)}/>
-            </div>
-          </CardContent>
-        </Card>
+        {/* Search Bar */}
+        <div className="prepp-card p-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <div className="relative flex-1 max-w-md">
+            <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[#64748B]" />
+            <Input
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              placeholder="Search role title, SSC domain, or keyword..."
+              className="pl-9"
+            />
+          </div>
+          <span className="font-mono text-[12px] text-[#64748B]">
+            {filteredRoles.length} Target Roles
+          </span>
+        </div>
 
-        {/* Job Roles Table */}
-        <Card className="border-blue-100 shadow-sm overflow-hidden">
-          <CardHeader className="py-4">
-            <CardTitle className="text-base text-blue-950">
-              National Standard Job Profiles ({filteredRoles.length})
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="p-0">
-            {loading ? (<div className="flex h-64 items-center justify-center">
-                <Loader2 className="h-8 w-8 animate-spin text-blue-900"/>
-              </div>) : filteredRoles.length === 0 ? (<div className="p-12 text-center text-slate-400">No job roles found</div>) : (<div className="overflow-x-auto">
-                <table className="w-full text-left border-collapse text-sm">
-                  <thead>
-                    <tr className="bg-slate-50 border-y border-slate-200 text-slate-600 text-xs font-semibold">
-                      <th className="py-3 px-6">Job Title</th>
-                      <th className="py-3 px-4">Domain</th>
-                      <th className="py-3 px-4">Experience</th>
-                      <th className="py-3 px-4">Avg Salary</th>
-                      <th className="py-3 px-4">Demand</th>
-                      <th className="py-3 px-4 text-center">Required Skills</th>
-                      <th className="py-3 px-6 text-right">Actions</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-slate-100">
-                    {filteredRoles.map((jr) => (<tr key={jr.id} className="hover:bg-slate-50/60 transition-colors">
-                        <td className="py-4 px-6 font-semibold text-blue-950">{jr.title}</td>
-                        <td className="py-4 px-4 text-xs">
-                          <span className="bg-slate-100 text-slate-700 px-2.5 py-1 rounded-md font-medium">
-                            {jr.domain}
+        {/* Roles Table */}
+        <div className="prepp-card overflow-hidden">
+          <div className="overflow-x-auto">
+            <table className="w-full text-left border-collapse">
+              <thead>
+                <tr className="border-y border-[#E2E8F0] bg-[#F8FAFC] font-mono text-[11px] font-semibold uppercase tracking-wider text-[#64748B]">
+                  <th className="px-6 py-3">Role Title</th>
+                  <th className="px-6 py-3">SSC Domain</th>
+                  <th className="px-6 py-3">Demand</th>
+                  <th className="px-6 py-3">Compensation</th>
+                  <th className="px-6 py-3">NOS Specs</th>
+                  <th className="px-6 py-3 text-right">Actions</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-[#E2E8F0] text-[13px]">
+                {loading ? (
+                  <tr>
+                    <td colSpan={6} className="px-6 py-10 text-center text-[#64748B]">
+                      Loading job role registry...
+                    </td>
+                  </tr>
+                ) : filteredRoles.length === 0 ? (
+                  <tr>
+                    <td colSpan={6} className="px-6 py-10 text-center text-[#64748B]">
+                      No job roles match your search query.
+                    </td>
+                  </tr>
+                ) : (
+                  filteredRoles.map((role) => {
+                    const demandKey = String(role.demandLevel || "MEDIUM").toUpperCase();
+                    const demandClass =
+                      DEMAND_STYLES[demandKey] || DEMAND_STYLES.MEDIUM;
+                    const reqCount = (role.skillRequirements || []).length;
+
+                    return (
+                      <tr
+                        key={role.id}
+                        className="hover:bg-[#F8FAFC] transition-colors"
+                      >
+                        <td className="px-6 py-3.5">
+                          <div className="flex items-center gap-2 font-semibold text-[#0F172A]">
+                            <Briefcase className="h-3.5 w-3.5 shrink-0 text-[#4F46E5]" />
+                            <span>{role.title}</span>
+                          </div>
+                          <div className="mt-0.5 text-[12px] text-[#64748B] line-clamp-1 max-w-md">
+                            {role.description}
+                          </div>
+                        </td>
+                        <td className="px-6 py-3.5 font-mono text-[12px] text-[#475569] whitespace-nowrap">
+                          {role.domain}
+                        </td>
+                        <td className="px-6 py-3.5 whitespace-nowrap">
+                          <span
+                            className={`inline-flex whitespace-nowrap rounded border px-2 py-0.5 font-mono text-[10px] font-semibold uppercase ${demandClass}`}
+                          >
+                            {role.demandLevel || "MEDIUM"}
                           </span>
                         </td>
-                        <td className="py-4 px-4 text-xs text-slate-600">{jr.minExperience || "Entry Level"}</td>
-                        <td className="py-4 px-4 text-xs font-medium text-slate-700">{jr.avgSalary || "N/A"}</td>
-                        <td className="py-4 px-4">
-                          <Badge variant="secondary" className="text-[11px]">
-                            {jr.demandLevel}
-                          </Badge>
+                        <td className="px-6 py-3.5 font-mono text-[12px] text-[#0F172A] whitespace-nowrap">
+                          <span className="inline-flex items-center gap-1 whitespace-nowrap">
+                            <IndianRupee className="h-3 w-3 shrink-0 text-[#10B981]" />
+                            {role.avgSalary || "—"}
+                          </span>
                         </td>
-                        <td className="py-4 px-4 text-center text-xs font-bold text-blue-900">
-                          {jr.skillRequirements?.length || 0}
+                        <td className="px-6 py-3.5 font-mono text-[12px] font-semibold text-[#334155] whitespace-nowrap">
+                          {reqCount} skills
                         </td>
-                        <td className="py-4 px-6 text-right space-x-1">
-                          <Button variant="ghost" size="sm" className="h-8 w-8 p-0 text-blue-700 hover:bg-blue-50" onClick={() => setSelectedRoleDetail(jr)} title="View Skill Requirements">
-                            <Eye className="h-4 w-4"/>
-                          </Button>
-                          <Button variant="ghost" size="sm" className="h-8 w-8 p-0 text-red-600 hover:text-red-700 hover:bg-red-50" onClick={() => handleDeleteRole(jr.id)} title="Delete Role">
-                            <Trash2 className="h-4 w-4"/>
-                          </Button>
+                        <td className="px-6 py-3.5 text-right">
+                          <div className="inline-flex items-center gap-1">
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              onClick={() => setSelectedRole(role)}
+                              className="h-8 text-[#4F46E5] hover:bg-[#F2F3FF]"
+                              aria-label={`Inspect requirements for ${role.title}`}
+                            >
+                              <Eye className="h-3.5 w-3.5" />
+                            </Button>
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              disabled={deletingId === role.id}
+                              onClick={() => handleDeleteRole(role.id)}
+                              className="h-8 text-[#BA1A1A] hover:bg-[#FEF2F2] hover:text-[#991B1B]"
+                              aria-label={`Delete ${role.title}`}
+                            >
+                              <Trash2 className="h-3.5 w-3.5" />
+                            </Button>
+                          </div>
                         </td>
-                      </tr>))}
-                  </tbody>
-                </table>
-              </div>)}
-          </CardContent>
-        </Card>
-
-        {/* Modal: View Requirements */}
-        {selectedRoleDetail && (<div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
-            <Card className="w-full max-w-lg bg-white shadow-2xl border border-blue-100">
-              <CardHeader className="flex flex-row items-start justify-between">
-                <div>
-                  <Badge variant="secondary" className="text-xs mb-1">{selectedRoleDetail.domain}</Badge>
-                  <CardTitle className="text-xl text-blue-950">{selectedRoleDetail.title}</CardTitle>
-                  <CardDescription className="text-xs text-slate-500 mt-1">
-                    {selectedRoleDetail.description}
-                  </CardDescription>
-                </div>
-                <button onClick={() => setSelectedRoleDetail(null)} className="text-slate-400 hover:text-slate-600">
-                  <X className="h-5 w-5"/>
-                </button>
-              </CardHeader>
-              <CardContent className="space-y-4">
-                <h4 className="text-sm font-bold text-slate-800">Prerequisite Competencies & Benchmarks:</h4>
-                <div className="max-h-64 overflow-y-auto space-y-2 pr-1">
-                  {(selectedRoleDetail.skillRequirements || []).map((sr) => (<div key={sr.id} className="p-3 rounded-lg border border-slate-100 bg-slate-50 flex items-center justify-between text-xs">
-                      <div>
-                        <span className="font-semibold text-blue-950 block">{sr.skill?.name}</span>
-                        <span className="text-slate-400 text-[11px] capitalize">{sr.importance} • {sr.skill?.category.toLowerCase()}</span>
-                      </div>
-                      <span className="font-bold text-blue-900 bg-blue-100 px-2 py-0.5 rounded">
-                        Target: {sr.requiredProficiency}%
-                      </span>
-                    </div>))}
-                </div>
-              </CardContent>
-              <CardFooter className="flex justify-end border-t border-slate-100 pt-3">
-                <Button variant="outline" size="sm" onClick={() => setSelectedRoleDetail(null)}>
-                  Close
-                </Button>
-              </CardFooter>
-            </Card>
-          </div>)}
-
-        {/* Modal: Add New Role */}
-        {showAddModal && (<div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
-            <Card className="w-full max-w-md shadow-2xl bg-white border border-blue-100 animate-in fade-in-0 zoom-in-95">
-              <CardHeader>
-                <CardTitle className="text-xl">Create Job Role</CardTitle>
-                <CardDescription>
-                  Define a new standard industry profile
-                </CardDescription>
-              </CardHeader>
-              <form onSubmit={handleCreateRole}>
-                <CardContent className="space-y-4">
-                  <div className="space-y-1.5">
-                    <Label htmlFor="role-title">Job Title *</Label>
-                    <Input id="role-title" placeholder="e.g. Cybersecurity Incident Responder" value={newRole.title} onChange={(e) => setNewRole({ ...newRole, title: e.target.value })} required/>
-                  </div>
-
-                  <div className="space-y-1.5">
-                    <Label htmlFor="role-dom">Domain *</Label>
-                    <select id="role-dom" value={newRole.domain} onChange={(e) => setNewRole({ ...newRole, domain: e.target.value })} className="w-full text-sm border border-slate-200 rounded-lg px-3 py-2 bg-white focus:outline-none focus:ring-2 focus:ring-blue-500">
-                      <option value="Web Development">Web Development</option>
-                      <option value="Data Science">Data Science</option>
-                      <option value="Artificial Intelligence">Artificial Intelligence</option>
-                      <option value="Cybersecurity">Cybersecurity</option>
-                      <option value="Cloud Computing">Cloud Computing</option>
-                      <option value="Digital Marketing">Digital Marketing</option>
-                      <option value="Electric Vehicle Technology">Electric Vehicle Technology</option>
-                    </select>
-                  </div>
-
-                  <div className="space-y-1.5">
-                    <Label htmlFor="role-sal">Average Salary Benchmark</Label>
-                    <Input id="role-sal" placeholder="e.g. ₹6,50,000 - ₹12,00,000" value={newRole.avgSalary} onChange={(e) => setNewRole({ ...newRole, avgSalary: e.target.value })}/>
-                  </div>
-
-                  <div className="space-y-1.5">
-                    <Label htmlFor="role-desc">Job Role Overview</Label>
-                    <Input id="role-desc" placeholder="Summary of responsibilities and scope..." value={newRole.description} onChange={(e) => setNewRole({ ...newRole, description: e.target.value })}/>
-                  </div>
-                </CardContent>
-                <CardFooter className="flex justify-end gap-2 border-t border-slate-100 pt-4">
-                  <Button type="button" variant="outline" onClick={() => setShowAddModal(false)} disabled={creating}>
-                    Cancel
-                  </Button>
-                  <Button type="submit" className="bg-blue-900" disabled={creating}>
-                    {creating && <Loader2 className="h-4 w-4 animate-spin mr-1"/>}
-                    Create Role
-                  </Button>
-                </CardFooter>
-              </form>
-            </Card>
-          </div>)}
+                      </tr>
+                    );
+                  })
+                )}
+              </tbody>
+            </table>
+          </div>
+        </div>
       </div>
-    </DashboardLayout>);
+
+      {/* Inspect Skill Requirements Modal */}
+      {selectedRole && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-[#0F172A]/40 backdrop-blur-[4px]">
+          <div className="w-full max-w-lg rounded-xl border border-[#CBD5E1] bg-white shadow-[0_12px_32px_-4px_rgba(15,23,42,0.16)] overflow-hidden">
+            <div className="h-1 w-full bg-gradient-to-r from-[#3525CD] via-[#4F46E5] to-[#10B981]" />
+            <div className="p-6">
+              <div className="flex items-start justify-between gap-3">
+                <div>
+                  <div className="font-mono text-[11px] font-semibold uppercase tracking-wider text-[#4F46E5]">
+                    {selectedRole.domain} · {selectedRole.minExperience}
+                  </div>
+                  <h2 className="mt-1 font-display text-lg font-bold text-[#0F172A]">
+                    {selectedRole.title}
+                  </h2>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setSelectedRole(null)}
+                  className="rounded-lg p-1.5 text-[#64748B] hover:bg-[#F1F5F9]"
+                  aria-label="Close modal"
+                >
+                  <X className="h-4 w-4" />
+                </button>
+              </div>
+
+              <p className="mt-2 text-[13px] text-[#475569]">
+                {selectedRole.description}
+              </p>
+
+              <div className="mt-5">
+                <div className="mb-2.5 font-mono text-[11px] font-semibold uppercase tracking-wider text-[#64748B]">
+                  Required NOS Benchmarks (
+                  {(selectedRole.skillRequirements || []).length})
+                </div>
+                <div className="max-h-72 space-y-2.5 overflow-y-auto pr-1 custom-scrollbar">
+                  {(selectedRole.skillRequirements || []).length === 0 ? (
+                    <div className="rounded-lg border border-dashed border-[#CBD5E1] bg-[#F8FAFC] p-4 text-center text-[13px] text-[#64748B]">
+                      No explicit skill requirements linked to this job role yet.
+                    </div>
+                  ) : (
+                    selectedRole.skillRequirements.map((sr) => (
+                      <div
+                        key={sr.id}
+                        className="rounded-lg border border-[#E2E8F0] bg-[#F8FAFC] p-3"
+                      >
+                        <div className="flex items-center justify-between gap-2">
+                          <span className="font-semibold text-[13px] text-[#0F172A]">
+                            {sr.skill?.name || "Required Skill"}
+                          </span>
+                          <div className="flex items-center gap-1.5">
+                            <span className="rounded border border-[#E2E8F0] bg-white px-1.5 py-0.5 font-mono text-[10px] text-[#475569]">
+                              {sr.skill?.category || "TECHNICAL"}
+                            </span>
+                            <span className="rounded border border-[#C7C4D8] bg-[#F2F3FF] px-1.5 py-0.5 font-mono text-[10px] font-semibold text-[#3525CD]">
+                              {sr.importance || "CORE"}
+                            </span>
+                          </div>
+                        </div>
+                        <div className="mt-2 flex items-center gap-3">
+                          <Progress
+                            value={sr.requiredProficiency || 0}
+                            className="h-1.5 flex-1"
+                            indicatorClassName="bg-[#4F46E5]"
+                          />
+                          <span className="font-mono text-[11px] font-bold text-[#0F172A]">
+                            {sr.requiredProficiency || 0}%
+                          </span>
+                        </div>
+                      </div>
+                    ))
+                  )}
+                </div>
+              </div>
+
+              <div className="mt-6 flex justify-end border-t border-[#E2E8F0] pt-4">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setSelectedRole(null)}
+                >
+                  Close Benchmark
+                </Button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Add Job Role Modal */}
+      {showAddModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-[#0F172A]/40 backdrop-blur-[4px]">
+          <div className="w-full max-w-md rounded-xl border border-[#CBD5E1] bg-white shadow-[0_12px_32px_-4px_rgba(15,23,42,0.16)] overflow-hidden">
+            <div className="h-1 w-full bg-gradient-to-r from-[#3525CD] via-[#4F46E5] to-[#10B981]" />
+            <form onSubmit={handleAddRole} className="p-6 space-y-4">
+              <div className="flex items-center justify-between">
+                <h2 className="font-display text-lg font-bold text-[#0F172A]">
+                  Create Target Job Role
+                </h2>
+                <button
+                  type="button"
+                  onClick={() => setShowAddModal(false)}
+                  className="rounded-lg p-1.5 text-[#64748B] hover:bg-[#F1F5F9]"
+                  aria-label="Close modal"
+                >
+                  <X className="h-4 w-4" />
+                </button>
+              </div>
+
+              <div className="space-y-1.5">
+                <Label htmlFor="role-title">Role Title</Label>
+                <Input
+                  id="role-title"
+                  value={formData.title}
+                  onChange={(e) =>
+                    setFormData((p) => ({ ...p, title: e.target.value }))
+                  }
+                  placeholder="e.g. Junior EV Diagnostic Technician"
+                  required
+                />
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div className="space-y-1.5">
+                  <Label htmlFor="role-domain">SSC Domain</Label>
+                  <select
+                    id="role-domain"
+                    value={formData.domain}
+                    onChange={(e) =>
+                      setFormData((p) => ({ ...p, domain: e.target.value }))
+                    }
+                    className="h-9 w-full rounded-lg border border-[#CBD5E1] bg-white px-3 text-[13px] text-[#0F172A] focus:border-[#4F46E5] focus:outline-none"
+                  >
+                    {DOMAINS.map((d) => (
+                      <option key={d} value={d}>
+                        {d}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                <div className="space-y-1.5">
+                  <Label htmlFor="role-demand">Demand Level</Label>
+                  <select
+                    id="role-demand"
+                    value={formData.demandLevel}
+                    onChange={(e) =>
+                      setFormData((p) => ({ ...p, demandLevel: e.target.value }))
+                    }
+                    className="h-9 w-full rounded-lg border border-[#CBD5E1] bg-white px-3 text-[13px] text-[#0F172A] focus:border-[#4F46E5] focus:outline-none"
+                  >
+                    <option value="VERY HIGH">VERY HIGH</option>
+                    <option value="HIGH">HIGH</option>
+                    <option value="MEDIUM">MEDIUM</option>
+                    <option value="LOW">LOW</option>
+                  </select>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div className="space-y-1.5">
+                  <Label htmlFor="role-exp">Min Experience</Label>
+                  <Input
+                    id="role-exp"
+                    value={formData.minExperience}
+                    onChange={(e) =>
+                      setFormData((p) => ({
+                        ...p,
+                        minExperience: e.target.value,
+                      }))
+                    }
+                    placeholder="e.g. 0-2 Years"
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <Label htmlFor="role-salary">Avg Compensation</Label>
+                  <Input
+                    id="role-salary"
+                    value={formData.avgSalary}
+                    onChange={(e) =>
+                      setFormData((p) => ({ ...p, avgSalary: e.target.value }))
+                    }
+                    placeholder="e.g. ₹4L – ₹8L"
+                  />
+                </div>
+              </div>
+
+              <div className="space-y-1.5">
+                <Label htmlFor="role-desc">Role Summary</Label>
+                <Textarea
+                  id="role-desc"
+                  rows={3}
+                  value={formData.description}
+                  onChange={(e) =>
+                    setFormData((p) => ({ ...p, description: e.target.value }))
+                  }
+                  placeholder="Core job duties and NSQF outcome focus..."
+                  required
+                />
+              </div>
+
+              <div className="flex justify-end gap-2 pt-3 border-t border-[#E2E8F0]">
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setShowAddModal(false)}
+                >
+                  Cancel
+                </Button>
+                <Button type="submit" size="sm" disabled={submitting}>
+                  {submitting ? "Saving..." : "Create Role"}
+                </Button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+    </DashboardLayout>
+  );
 }

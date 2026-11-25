@@ -168,17 +168,25 @@ export default function AIResumeAnalyserPage() {
     const [savingProfile, setSavingProfile] = useState(false);
     const [profileSaved, setProfileSaved] = useState(false);
     const [enrollModalCourse, setEnrollModalCourse] = useState(null);
-    // Google Gemini Generative AI Key State
+    // Google Gemini Generative AI Key State (uses shared server key automatically)
+    const [serverAiConfigured, setServerAiConfigured] = useState(true);
     const [geminiApiKey, setGeminiApiKey] = useState("");
     const [showApiSettings, setShowApiSettings] = useState(false);
     const [tempApiKey, setTempApiKey] = useState("");
     const [showKeyText, setShowKeyText] = useState(false);
 
     useEffect(() => {
-        const saved = typeof window !== "undefined" ? localStorage.getItem("pmkvy_gemini_key") : "";
-        if (saved) {
-            setGeminiApiKey(saved);
-            setTempApiKey(saved);
+        if (typeof window !== "undefined") {
+            const params = new URLSearchParams(window.location.search);
+            const modeParam = (params.get("mode") || "").toLowerCase();
+            if (modeParam === "job-link" || modeParam === "url" || modeParam === "linkedin") {
+                setTargetMode("LINKEDIN");
+            }
+            const saved = localStorage.getItem("pmkvy_gemini_key") || "";
+            if (saved) {
+                setGeminiApiKey(saved);
+                setTempApiKey(saved);
+            }
         }
     }, []);
 
@@ -201,13 +209,16 @@ export default function AIResumeAnalyserPage() {
                 : "Google Gemini API key removed. Using offline PMKVY NSQF engine.",
         });
     };
-    // Load Job Roles from API
+    // Load Public QP-NOS Job Roles & AI status from API
     useEffect(() => {
         async function loadJobRoles() {
             try {
-                const res = await fetch("/api/skill-gap");
+                const res = await fetch("/api/ai-resume-analyser");
                 if (res.ok) {
                     const data = await res.json();
+                    if (typeof data.aiConfigured === "boolean") {
+                        setServerAiConfigured(data.aiConfigured);
+                    }
                     if (data.jobRoles && data.jobRoles.length > 0) {
                         setJobRoles(data.jobRoles);
                         setSelectedJobRoleId(data.jobRoles[0].id);
@@ -292,6 +303,13 @@ export default function AIResumeAnalyserPage() {
             setNotification({
                 type: "error",
                 message: "Please upload a resume file or paste your resume text before running the diagnostic.",
+            });
+            return;
+        }
+        if (targetMode === "LINKEDIN" && !linkedinUrl.trim() && !jobDescriptionText.trim()) {
+            setNotification({
+                type: "error",
+                message: "Please paste a job posting link or job description to evaluate against your resume.",
             });
             return;
         }
@@ -393,753 +411,903 @@ export default function AIResumeAnalyserPage() {
             return item.status === "ENHANCEMENT_NEEDED";
         return true;
     });
-    return (<DashboardLayout>
-      <div className="space-y-6 max-w-6xl mx-auto pb-16 font-sans">
-        {/* Apple HomeView Section Header */}
-        <div className="bg-white border border-[#e5e7eb] rounded-2xl p-6 sm:p-8">
-          <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-            <div>
-              <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-[#0071e3]/10 text-[#0071e3] text-[12px] font-semibold mb-3">
-                <Sparkles className="h-3.5 w-3.5"/>
-                <span>AI Skill Intelligence</span>
-              </div>
-              <h1 className="text-2xl sm:text-3xl font-semibold tracking-tight text-[#1d1d1f]">
-                AI Resume & Job Matcher
-              </h1>
-              <p className="text-[15px] text-[#86868b] mt-1 max-w-2xl leading-relaxed">
-                Benchmark your candidate background against National Occupational Standards (QP-NOS)
-                or live job listings. Discover competency gaps and unlock government-subsidized PMKVY courses.
-              </p>
-            </div>
-
-            <div className="flex items-center gap-2 self-start md:self-auto flex-wrap">
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => setShowApiSettings(!showApiSettings)}
-                className={`rounded-full text-[13px] h-[38px] px-4 transition-all ${
-                  geminiApiKey
-                    ? "bg-emerald-50 text-emerald-700 border-emerald-300 hover:bg-emerald-100"
-                    : "border-[#d2d2d7] text-[#1d1d1f] hover:bg-[#f5f5f7]"
-                }`}
-              >
-                <Sparkles className={`h-3.5 w-3.5 mr-1.5 ${geminiApiKey ? "text-emerald-600" : "text-[#0071e3]"}`} />
-                {geminiApiKey ? "Gemini AI: Active" : "Connect Gemini API"}
-              </Button>
-              <Button variant="outline" size="sm" onClick={() => window.print()} className="rounded-full text-[13px] border-[#d2d2d7] text-[#1d1d1f] hover:bg-[#f5f5f7] h-[38px] px-4">
-                <Printer className="h-3.5 w-3.5 mr-1.5 text-[#86868b]"/>
-                Print Audit
-              </Button>
-            </div>
-          </div>
-        </div>
-
-        {/* Gemini API Key Configuration Drawer */}
-        {showApiSettings && (
-          <div className="bg-white border border-[#e5e7eb] rounded-2xl p-6 shadow-sm transition-all animate-fade-in space-y-4">
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-[#e5e7eb]">
-              <div className="flex items-center gap-2.5">
-                <div className="w-8 h-8 rounded-full bg-[#0071e3]/10 text-[#0071e3] flex items-center justify-center">
-                  <Sparkles className="h-4 w-4 text-[#0071e3]" />
-                </div>
-                <div>
-                  <h3 className="text-[15px] font-semibold text-[#1d1d1f]">Google Gemini API Key</h3>
-                  <p className="text-[12px] text-[#86868b]">Generative AI analysis for dynamic NSQF mapping & personalized candidate advice</p>
-                </div>
-              </div>
-              <a
-                href="https://aistudio.google.com/app/apikey"
-                target="_blank"
-                rel="noreferrer"
-                className="text-[12px] text-[#0071e3] hover:underline flex items-center gap-1 font-medium"
-              >
-                Get Free API Key <ExternalLink className="h-3 w-3" />
+    return (
+      <DashboardLayout>
+        <div className="space-y-6 animate-fade-in">
+          {/* Breadcrumb & Header Strip (PrepP Style) */}
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+            <nav aria-label="Breadcrumb" className="flex items-center gap-2 text-[12px] font-mono text-[#64748B]">
+              <a href="/dashboard" className="hover:text-[#4F46E5] transition-colors">
+                Dashboard
               </a>
-            </div>
+              <span className="text-[#CBD5E1]">/</span>
+              <span className="text-[#0F172A] font-medium">AI Resume &amp; Job Matcher</span>
+            </nav>
 
-            <div className="flex flex-col sm:flex-row gap-3">
-              <div className="relative flex-1">
-                <input
-                  type={showKeyText ? "text" : "password"}
-                  value={tempApiKey}
-                  onChange={(e) => setTempApiKey(e.target.value)}
-                  placeholder="Paste your Google Gemini API Key (e.g. AIzaSy...)"
-                  className="w-full h-[42px] px-3.5 pr-10 rounded-xl bg-[#f5f5f7] border border-[#d2d2d7] text-[13px] text-[#1d1d1f] focus:outline-none focus:border-[#0071e3]"
-                />
-                <button
-                  type="button"
-                  onClick={() => setShowKeyText(!showKeyText)}
-                  className="absolute right-3 top-1/2 -translate-y-1/2 text-[#86868b] hover:text-[#1d1d1f] cursor-pointer"
-                >
-                  <Eye className="h-4 w-4" />
-                </button>
+            <div className="flex items-center gap-2 flex-wrap">
+              <div className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-[#ECFDF5] text-[#065F46] border border-[#A7F3D0] text-[12px] font-medium">
+                <Sparkles className="h-3.5 w-3.5 text-[#10B981]" />
+                <span>
+                  {serverAiConfigured
+                    ? "Gemini AI Ready (Shared Platform Key)"
+                    : "Local NOS Engine Ready"}
+                </span>
               </div>
-              <div className="flex items-center gap-2">
-                <Button
-                  onClick={() => saveGeminiKey(tempApiKey)}
-                  className="rounded-full bg-[#0071e3] hover:bg-[#0077ed] text-white text-[13px] h-[42px] px-5"
-                >
-                  Save Key
-                </Button>
-                {geminiApiKey && (
-                  <Button
-                    variant="outline"
-                    onClick={() => saveGeminiKey("")}
-                    className="rounded-full border-[#ff3b30]/30 text-[#ff3b30] hover:bg-[#ff3b30]/10 text-[13px] h-[42px] px-4"
-                  >
-                    Clear
-                  </Button>
-                )}
-                <Button
-                  variant="ghost"
-                  onClick={() => setShowApiSettings(false)}
-                  className="rounded-full text-[13px] text-[#86868b] h-[42px] px-3"
-                >
-                  Close
-                </Button>
-              </div>
+              <Button variant="outline" size="sm" onClick={() => window.print()}>
+                <Printer className="h-3.5 w-3.5 text-[#64748B]" />
+                <span>Print Audit</span>
+              </Button>
             </div>
-
-            <p className="text-[11px] text-[#86868b]">
-              🔒 <strong>Local Privacy:</strong> Keys are stored in your local browser and sent securely over HTTPS. You can also configure <code className="bg-[#f5f5f7] px-1.5 py-0.5 rounded border border-[#e5e7eb] font-mono">GEMINI_API_KEY</code> in <code className="bg-[#f5f5f7] px-1.5 py-0.5 rounded border border-[#e5e7eb] font-mono">.env</code>. When omitted, the app uses the built-in offline PMKVY NLP engine.
-            </p>
           </div>
-        )}
 
-        {/* In-App Notification Banner */}
-        {notification && (<div className={`p-4 rounded-2xl border flex items-start justify-between gap-3 transition-all ${notification.type === "error"
-                ? "bg-[#ff3b30]/10 border-[#ff3b30]/20 text-[#ff3b30]"
-                : notification.type === "success"
-                    ? "bg-[#34c759]/10 border-[#34c759]/20 text-[#248a3d]"
-                    : "bg-[#0071e3]/10 border-[#0071e3]/20 text-[#0071e3]"}`}>
-            <div className="flex items-start gap-2.5 text-[14px]">
-              {notification.type === "error" ? (<XCircle className="h-5 w-5 text-[#ff3b30] shrink-0 mt-0.5"/>) : notification.type === "success" ? (<CheckCircle2 className="h-5 w-5 text-[#34c759] shrink-0 mt-0.5"/>) : (<Info className="h-5 w-5 text-[#0071e3] shrink-0 mt-0.5"/>)}
-              <span className="font-medium">{notification.message}</span>
-            </div>
-            <button onClick={() => setNotification(null)} className="text-[#86868b] hover:text-[#1d1d1f] text-xs font-semibold ml-2 cursor-pointer">
-              ✕
-            </button>
-          </div>)}
-
-        {/* Input Bento Grid: Target Job + Resume Ingestion */}
-        <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
-          {/* Target Job Benchmark Column (5 Cols) */}
-          <div className="lg:col-span-5 bg-white border border-[#e5e7eb] rounded-2xl p-6 flex flex-col justify-between">
-            <div className="space-y-5">
-              <div className="flex items-center justify-between border-b border-[#e5e7eb] pb-3">
-                <div className="flex items-center gap-2.5">
-                  <div className="w-8 h-8 rounded-full bg-[#0071e3]/10 text-[#0071e3] flex items-center justify-center">
-                    <Building2 className="h-4 w-4"/>
-                  </div>
-                  <div>
-                    <h2 className="text-[16px] font-semibold text-[#1d1d1f]">Target Job Benchmark</h2>
-                    <p className="text-[12px] text-[#86868b]">Choose standard or live job</p>
-                  </div>
+          {/* Page Title Banner */}
+          <div className="prepp-card p-6">
+            <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+              <div className="space-y-1.5">
+                <div className="flex flex-wrap items-center gap-2">
+                  <span className="px-2 py-0.5 rounded-full text-[11px] font-mono bg-[#EAEDFF] text-[#3525CD] border border-[#C7C4D8]">
+                    AI Diagnostic Engine
+                  </span>
+                  <span className="px-2 py-0.5 rounded-full text-[11px] font-mono bg-[#ECFDF5] text-[#065F46] border border-[#A7F3D0]">
+                    QP-NOS &amp; Job Link Supported
+                  </span>
                 </div>
-                <Badge variant="muted" className="text-[11px] font-medium">
-                  Step 1
-                </Badge>
+                <h1 className="font-display text-2xl sm:text-[28px] font-semibold text-[#0F172A] tracking-tight">
+                  AI Resume &amp; Industry Job Matcher
+                </h1>
+                <p className="text-[14px] text-[#64748B] max-w-3xl leading-relaxed">
+                  Benchmark your CV against National Occupational Standards (QP-NOS job roles) or any live job posting URL using Google Gemini AI, and discover free PMKVY courses.
+                </p>
               </div>
+            </div>
+          </div>
 
-              {/* Mode Switcher Tabs (Apple Segmented Style) */}
-              <div className="flex p-1 bg-[#f5f5f7] rounded-xl border border-[#e5e7eb]">
-                <button type="button" onClick={() => setTargetMode("QP_NOS")} className={`flex-1 py-1.5 text-[13px] font-medium rounded-lg transition-all ${targetMode === "QP_NOS"
-            ? "bg-white text-[#1d1d1f] shadow-xs"
-            : "text-[#86868b] hover:text-[#1d1d1f]"}`}>
-                  Standard QP-NOS
-                </button>
-                <button type="button" onClick={() => setTargetMode("LINKEDIN")} className={`flex-1 py-1.5 text-[13px] font-medium rounded-lg transition-all ${targetMode === "LINKEDIN"
-            ? "bg-white text-[#1d1d1f] shadow-xs"
-            : "text-[#86868b] hover:text-[#1d1d1f]"}`}>
-                  Live Job URL (LinkedIn)
-                </button>
+          {/* In-App Notification Banner */}
+          {notification && (
+            <div
+              className={`p-3.5 rounded-lg border flex items-start justify-between gap-3 text-[13px] ${
+                notification.type === "error"
+                  ? "bg-[#FEF2F2] border-[#FECACA] text-[#991B1B]"
+                  : notification.type === "success"
+                  ? "bg-[#ECFDF5] border-[#A7F3D0] text-[#065F46]"
+                  : "bg-[#F2F3FF] border-[#C7C4D8] text-[#3525CD]"
+              }`}
+            >
+              <div className="flex items-start gap-2">
+                {notification.type === "error" ? (
+                  <XCircle className="h-4 w-4 shrink-0 mt-0.5" />
+                ) : notification.type === "success" ? (
+                  <CheckCircle2 className="h-4 w-4 shrink-0 mt-0.5" />
+                ) : (
+                  <Info className="h-4 w-4 shrink-0 mt-0.5" />
+                )}
+                <span className="font-medium">{notification.message}</span>
               </div>
+              <button onClick={() => setNotification(null)} className="text-xs font-semibold hover:opacity-75 cursor-pointer">
+                ✕
+              </button>
+            </div>
+          )}
 
-              {targetMode === "QP_NOS" ? (
-        /* Mode A: National Qualification Pack Selection */
-        <div className="space-y-4">
-                  <div>
-                    <label className="block text-[13px] font-medium text-[#1d1d1f] mb-1.5">
-                      Sector Skill Council (SSC)
-                    </label>
-                    <select value={selectedDomain} onChange={(e) => {
-                const domain = e.target.value;
-                setSelectedDomain(domain);
-                const match = jobRoles.find((r) => r.domain.toLowerCase() === domain.toLowerCase());
-                if (match)
-                    setSelectedJobRoleId(match.id);
-            }} className="w-full text-[14px] bg-white border border-[#d2d2d7] rounded-xl px-3.5 py-2 text-[#1d1d1f] focus:outline-none focus:border-[#0071e3] focus:ring-2 focus:ring-[#0071e3]/20">
-                      {SECTOR_SKILL_COUNCILS.map((ssc) => (<option key={ssc.id} value={ssc.domain}>
-                          {ssc.name}
-                        </option>))}
-                    </select>
-                  </div>
-
-                  <div className="grid grid-cols-2 gap-3">
+          {/* Split-Screen Workbench (5 cols Target + 7 cols Resume) */}
+          <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
+            {/* Target Job Benchmark Column */}
+            <div className="lg:col-span-5 prepp-card p-5 sm:p-6 flex flex-col justify-between space-y-5">
+              <div className="space-y-4">
+                <div className="flex items-center justify-between pb-3 border-b border-[#F1F5F9]">
+                  <div className="flex items-center gap-2.5">
+                    <div className="w-8 h-8 rounded-lg bg-[#EAEDFF] text-[#3525CD] flex items-center justify-center">
+                      <Building2 className="h-4 w-4" />
+                    </div>
                     <div>
-                      <label className="block text-[13px] font-medium text-[#1d1d1f] mb-1.5">
-                        Target NSQF Level
+                      <h2 className="font-display text-[15px] font-semibold text-[#0F172A]">Target Job Benchmark</h2>
+                      <p className="text-[12px] text-[#64748B]">Choose QP-NOS or corporate JD</p>
+                    </div>
+                  </div>
+                  <span className="font-mono text-[10px] px-2 py-0.5 rounded bg-[#F1F5F9] border border-[#E2E8F0] text-[#475569] font-semibold">
+                    STEP 01
+                  </span>
+                </div>
+
+                {/* Dual-Mode Segmented Pill Switcher */}
+                <div className="flex p-1 bg-[#F1F5F9] rounded-lg border border-[#E2E8F0]">
+                  <button
+                    type="button"
+                    onClick={() => setTargetMode("QP_NOS")}
+                    className={`flex-1 py-1.5 text-[12px] font-medium rounded-md transition-all cursor-pointer ${
+                      targetMode === "QP_NOS"
+                        ? "bg-white text-[#0F172A] shadow-xs border border-[#E2E8F0]/70"
+                        : "text-[#64748B] hover:text-[#0F172A]"
+                    }`}
+                  >
+                    By Job Role (QP-NOS)
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setTargetMode("LINKEDIN")}
+                    className={`flex-1 py-1.5 text-[12px] font-medium rounded-md transition-all cursor-pointer ${
+                      targetMode === "LINKEDIN"
+                        ? "bg-white text-[#0F172A] shadow-xs border border-[#E2E8F0]/70"
+                        : "text-[#64748B] hover:text-[#0F172A]"
+                    }`}
+                  >
+                    By Job Link / JD (AI)
+                  </button>
+                </div>
+
+                {targetMode === "QP_NOS" ? (
+                  <div className="space-y-3.5">
+                    <div>
+                      <label className="block text-[12px] font-medium text-[#0F172A] mb-1">
+                        Sector Skill Council (SSC)
                       </label>
-                      <select value={selectedNsqfLevel} onChange={(e) => setSelectedNsqfLevel(e.target.value)} className="w-full text-[14px] bg-white border border-[#d2d2d7] rounded-xl px-3 py-2 text-[#1d1d1f] focus:outline-none focus:border-[#0071e3] focus:ring-2 focus:ring-[#0071e3]/20">
-                        <option>NSQF Level 4 (Technician)</option>
-                        <option>NSQF Level 5 (Senior)</option>
-                        <option>NSQF Level 6 (Supervisor)</option>
-                        <option>NSQF Level 7 (Lead)</option>
+                      <select
+                        value={selectedDomain}
+                        onChange={(e) => {
+                          const domain = e.target.value;
+                          setSelectedDomain(domain);
+                          const match = jobRoles.find((r) => r.domain.toLowerCase() === domain.toLowerCase());
+                          if (match) setSelectedJobRoleId(match.id);
+                        }}
+                        className="w-full h-9 text-[13px] bg-white border border-[#CBD5E1] rounded-lg px-3 text-[#0F172A] focus:outline-none focus:border-[#4F46E5] focus:ring-2 focus:ring-[#4F46E5]/15"
+                      >
+                        {SECTOR_SKILL_COUNCILS.map((ssc) => (
+                          <option key={ssc.id} value={ssc.domain}>
+                            {ssc.name}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-3">
+                      <div>
+                        <label className="block text-[12px] font-medium text-[#0F172A] mb-1">
+                          Target NSQF Level
+                        </label>
+                        <select
+                          value={selectedNsqfLevel}
+                          onChange={(e) => setSelectedNsqfLevel(e.target.value)}
+                          className="w-full h-9 text-[13px] bg-white border border-[#CBD5E1] rounded-lg px-2.5 text-[#0F172A] focus:outline-none focus:border-[#4F46E5]"
+                        >
+                          <option>NSQF Level 4 (Technician)</option>
+                          <option>NSQF Level 5 (Senior)</option>
+                          <option>NSQF Level 6 (Supervisor)</option>
+                          <option>NSQF Level 7 (Lead)</option>
+                        </select>
+                      </div>
+
+                      <div>
+                        <label className="block text-[12px] font-medium text-[#0F172A] mb-1">
+                          QP Standard Code
+                        </label>
+                        <input
+                          type="text"
+                          readOnly
+                          value={
+                            selectedDomain.toLowerCase().includes("electric")
+                              ? "ELE/Q9802 - v2.0"
+                              : selectedDomain.toLowerCase().includes("data")
+                              ? "SSC/Q2101 - v1.0"
+                              : "SSC/Q0508 - v2.0"
+                          }
+                          className="w-full h-9 text-[12px] font-mono bg-[#F8FAFC] border border-[#E2E8F0] rounded-lg px-3 text-[#4F46E5] font-medium"
+                        />
+                      </div>
+                    </div>
+
+                    <div>
+                      <label className="block text-[12px] font-medium text-[#0F172A] mb-1">
+                        Qualification Pack (Job Role)
+                      </label>
+                      <select
+                        value={selectedJobRoleId}
+                        onChange={(e) => setSelectedJobRoleId(e.target.value)}
+                        className="w-full h-9 text-[13px] bg-white border border-[#CBD5E1] rounded-lg px-3 text-[#0F172A] focus:outline-none focus:border-[#4F46E5]"
+                      >
+                        {jobRoles.map((role) => (
+                          <option key={role.id} value={role.id}>
+                            {role.title} ({role.domain})
+                          </option>
+                        ))}
                       </select>
                     </div>
 
                     <div>
-                      <label className="block text-[13px] font-medium text-[#1d1d1f] mb-1.5">
-                        QP Standard
+                      <div className="font-mono text-[10px] font-semibold text-[#64748B] uppercase tracking-wider mb-1.5">
+                        1-Click Popular Roles
+                      </div>
+                      <div className="flex flex-wrap gap-1.5">
+                        {jobRoles.slice(0, 4).map((role) => (
+                          <button
+                            key={role.id}
+                            type="button"
+                            onClick={() => {
+                              setSelectedJobRoleId(role.id);
+                              setSelectedDomain(role.domain);
+                            }}
+                            className={`px-2.5 py-1 rounded-md text-[12px] font-medium border transition-colors cursor-pointer ${
+                              selectedJobRoleId === role.id
+                                ? "bg-[#4F46E5] text-white border-[#4F46E5]"
+                                : "bg-[#F8FAFC] text-[#0F172A] border-[#E2E8F0] hover:border-[#CBD5E1]"
+                            }`}
+                          >
+                            {role.title}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="space-y-3.5">
+                    <div>
+                      <label className="block text-[12px] font-medium text-[#0F172A] mb-1">
+                        Job Link URL
                       </label>
-                      <input type="text" readOnly value={selectedDomain.toLowerCase().includes("electric")
-                ? "ELE/Q9802 - v2.0"
-                : selectedDomain.toLowerCase().includes("data")
-                    ? "SSC/Q2101 - v1.0"
-                    : "SSC/Q0508 - v2.0"} className="w-full text-[13px] font-mono bg-[#f5f5f7] border border-[#e5e7eb] rounded-xl px-3 py-2 text-[#86868b]"/>
-                    </div>
-                  </div>
-
-                  <div>
-                    <label className="block text-[13px] font-medium text-[#1d1d1f] mb-1.5">
-                      Qualification Pack (Job Role)
-                    </label>
-                    <select value={selectedJobRoleId} onChange={(e) => setSelectedJobRoleId(e.target.value)} className="w-full text-[14px] bg-white border border-[#d2d2d7] rounded-xl px-3.5 py-2 text-[#1d1d1f] focus:outline-none focus:border-[#0071e3] focus:ring-2 focus:ring-[#0071e3]/20">
-                      {jobRoles.map((role) => (<option key={role.id} value={role.id}>
-                          {role.title} ({role.domain})
-                        </option>))}
-                    </select>
-                  </div>
-
-                  {/* 1-Click Role Chips */}
-                  <div>
-                    <div className="text-[11px] font-semibold text-[#86868b] uppercase tracking-wider mb-2">
-                      Popular Roles (1-Click)
-                    </div>
-                    <div className="flex flex-wrap gap-1.5">
-                      {jobRoles.slice(0, 4).map((role) => (<button key={role.id} type="button" onClick={() => {
-                    setSelectedJobRoleId(role.id);
-                    setSelectedDomain(role.domain);
-                }} className={`px-3 py-1 rounded-full text-[12px] font-medium transition-all ${selectedJobRoleId === role.id
-                    ? "bg-[#0071e3] text-white"
-                    : "bg-[#f5f5f7] text-[#1d1d1f] hover:bg-[#e5e5ea]"}`}>
-                          {role.title}
-                        </button>))}
-                    </div>
-                  </div>
-                </div>) : (
-        /* Mode B: Live LinkedIn / Indeed Job Posting */
-        <div className="space-y-4">
-                  <div>
-                    <label className="block text-[13px] font-medium text-[#1d1d1f] mb-1.5">
-                      Job Posting URL
-                    </label>
-                    <div className="relative">
-                      <input type="url" placeholder="https://www.linkedin.com/jobs/view/..." value={linkedinUrl} onChange={(e) => setLinkedinUrl(e.target.value)} className="w-full text-[13px] bg-white border border-[#d2d2d7] rounded-xl pl-9 pr-3 py-2 text-[#1d1d1f] focus:outline-none focus:border-[#0071e3] focus:ring-2 focus:ring-[#0071e3]/20"/>
-                      <LinkIcon className="h-4 w-4 text-[#86868b] absolute left-3 top-2.5"/>
-                    </div>
-                  </div>
-
-                  <div>
-                    <label className="block text-[13px] font-medium text-[#1d1d1f] mb-1.5">
-                      Job Requirements / Description
-                    </label>
-                    <textarea rows={5} placeholder="Paste key responsibilities or skills required..." value={jobDescriptionText} onChange={(e) => setJobDescriptionText(e.target.value)} className="w-full text-[13px] font-mono bg-white border border-[#d2d2d7] rounded-xl p-3 text-[#1d1d1f] focus:outline-none focus:border-[#0071e3] focus:ring-2 focus:ring-[#0071e3]/20"/>
-                  </div>
-
-                  <div>
-                    <div className="text-[11px] font-semibold text-[#86868b] uppercase tracking-wider mb-2">
-                      Sample Postings (1-Click)
-                    </div>
-                    <div className="flex flex-wrap gap-1.5">
-                      <button type="button" onClick={() => loadSampleLinkedInJob("frontend_fintech")} className="px-3 py-1 rounded-full text-[12px] bg-[#f5f5f7] text-[#1d1d1f] hover:bg-[#e5e5ea] font-medium">
-                        Sr. React Developer @ FinTech
-                      </button>
-                      <button type="button" onClick={() => loadSampleLinkedInJob("ev_powertrain")} className="px-3 py-1 rounded-full text-[12px] bg-[#f5f5f7] text-[#1d1d1f] hover:bg-[#e5e5ea] font-medium">
-                        EV Powertrain Engineer @ AutoTech
-                      </button>
-                    </div>
-                  </div>
-                </div>)}
-            </div>
-
-            <div className="mt-5 pt-4 border-t border-[#e5e7eb] flex items-center justify-between text-[12px] text-[#86868b]">
-              <span className="flex items-center gap-1.5">
-                <CheckCircle2 className="h-4 w-4 text-[#34c759]"/>
-                NSQF Aligned
-              </span>
-              <a href="https://www.skillindiadigital.gov.in" target="_blank" rel="noreferrer" className="text-[#0071e3] font-medium hover:underline inline-flex items-center gap-1">
-                Skill India Digital <ExternalLink className="h-3 w-3"/>
-              </a>
-            </div>
-          </div>
-
-          {/* Candidate Resume & Ingestion Column (7 Cols) */}
-          <div className="lg:col-span-7 bg-white border border-[#e5e7eb] rounded-2xl p-6 flex flex-col justify-between">
-            <div className="space-y-5">
-              <div className="flex items-center justify-between border-b border-[#e5e7eb] pb-3">
-                <div className="flex items-center gap-2.5">
-                  <div className="w-8 h-8 rounded-full bg-[#0071e3]/10 text-[#0071e3] flex items-center justify-center">
-                    <FileText className="h-4 w-4"/>
-                  </div>
-                  <div>
-                    <h2 className="text-[16px] font-semibold text-[#1d1d1f]">Candidate Resume / CV</h2>
-                    <p className="text-[12px] text-[#86868b]">Upload file or paste experience text</p>
-                  </div>
-                </div>
-                <Badge variant="muted" className="text-[11px] font-medium">
-                  Step 2
-                </Badge>
-              </div>
-
-              {/* Upload Drop Zone */}
-              <div onClick={() => fileInputRef.current?.click()} onDragOver={(e) => e.preventDefault()} onDrop={(e) => {
-            e.preventDefault();
-            const file = e.dataTransfer.files?.[0];
-            if (file)
-                handleFileSelection(file);
-        }} className="border border-dashed border-[#d2d2d7] hover:border-[#0071e3] rounded-2xl p-6 text-center bg-[#f5f5f7]/60 hover:bg-[#0071e3]/5 transition-all cursor-pointer group">
-                <input type="file" ref={fileInputRef} onChange={handleFileInputChange} accept=".pdf,.txt,.md,.rtf,.json,.csv" className="hidden"/>
-
-                <div className="w-11 h-11 rounded-full bg-white border border-[#e5e7eb] flex items-center justify-center mx-auto mb-2.5 group-hover:scale-105 transition-transform">
-                  <Upload className="h-5 w-5 text-[#0071e3]"/>
-                </div>
-
-                <div className="text-[14px] font-medium text-[#1d1d1f]">
-                  Drop resume (PDF, TXT, MD) or <span className="text-[#0071e3] underline">Browse files</span>
-                </div>
-                <p className="text-[12px] text-[#86868b] mt-1">
-                  Evaluated locally against official QP-NOS competency maps
-                </p>
-
-                {/* Uploaded File Chip */}
-                {uploadedFileMeta && (<div className="mt-3.5 inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-white border border-[#e5e7eb] text-[12px]">
-                    <CheckCircle2 className="h-4 w-4 text-[#34c759]"/>
-                    <span className="font-medium text-[#1d1d1f] truncate max-w-xs">{uploadedFileMeta.name}</span>
-                    <span className="text-[#86868b]">({uploadedFileMeta.size})</span>
-                  </div>)}
-              </div>
-
-              {/* File Parsing Warning */}
-              {fileParseWarning && (<div className="p-3 rounded-xl bg-[#ff3b30]/10 border border-[#ff3b30]/20 text-[#ff3b30] text-[12px] flex items-start gap-2">
-                  <AlertTriangle className="h-4 w-4 text-[#ff3b30] shrink-0 mt-0.5"/>
-                  <span>{fileParseWarning}</span>
-                </div>)}
-
-              {/* Text Preview / Edit Toggle */}
-              <div>
-                <div className="flex items-center justify-between mb-1.5">
-                  <button type="button" onClick={() => setShowTextPreview(!showTextPreview)} className="text-[13px] font-medium text-[#0071e3] hover:underline flex items-center gap-1.5">
-                    <Eye className="h-3.5 w-3.5"/>
-                    {showTextPreview ? "Hide Resume Text" : "View / Edit Resume Text"}
-                    {resumeText ? ` (${resumeText.length} chars)` : ""}
-                  </button>
-                  {resumeText && (<span className="text-[11px] text-[#34c759] font-medium">✓ Content loaded</span>)}
-                </div>
-
-                {showTextPreview && (<textarea rows={6} value={resumeText} onChange={(e) => setResumeText(e.target.value)} placeholder="Paste or edit resume text here..." className="w-full text-[13px] font-mono bg-white border border-[#d2d2d7] rounded-xl p-3 text-[#1d1d1f] focus:outline-none focus:border-[#0071e3] focus:ring-2 focus:ring-[#0071e3]/20"/>)}
-              </div>
-
-              {/* Sample Resumes */}
-              <div>
-                <div className="text-[11px] font-semibold text-[#86868b] uppercase tracking-wider mb-2">
-                  Load Pre-Verified Resumes (1-Click)
-                </div>
-                <div className="flex flex-wrap gap-2">
-                  <button type="button" onClick={() => loadSampleResume("fullstack")} className="px-3 py-1 rounded-full text-[12px] bg-[#f5f5f7] text-[#1d1d1f] hover:bg-[#e5e5ea] font-medium transition-colors">
-                    Sample 1: Arun (React / Full Stack)
-                  </button>
-                  <button type="button" onClick={() => loadSampleResume("ev_tech")} className="px-3 py-1 rounded-full text-[12px] bg-[#f5f5f7] text-[#1d1d1f] hover:bg-[#e5e5ea] font-medium transition-colors">
-                    Sample 2: Aaditya (ITI EV Technician)
-                  </button>
-                  <button type="button" onClick={() => loadSampleResume("data_analyst")} className="px-3 py-1 rounded-full text-[12px] bg-[#f5f5f7] text-[#1d1d1f] hover:bg-[#e5e5ea] font-medium transition-colors">
-                    Sample 3: Priya (Data Analyst)
-                  </button>
-                </div>
-              </div>
-            </div>
-
-            {/* Execution Buttons */}
-            <div className="mt-5 pt-4 border-t border-[#e5e7eb] flex flex-col sm:flex-row items-center justify-between gap-3">
-              <Button type="button" variant="outline" size="sm" onClick={resetInputs} className="rounded-full text-[13px] border-[#d2d2d7] text-[#1d1d1f] hover:bg-[#f5f5f7] h-[40px] px-5">
-                Clear Inputs
-              </Button>
-
-              <Button type="button" onClick={runDiagnostic} disabled={analyzing} className="w-full sm:w-auto bg-[#0071e3] hover:bg-[#0077ed] text-white font-medium text-[15px] rounded-full h-[44px] px-7 shadow-none flex items-center justify-center gap-2">
-                {analyzing ? (<>
-                    <RefreshCw className="h-4 w-4 animate-spin text-white"/>
-                    <span>Evaluating Competencies...</span>
-                  </>) : (<>
-                    <Sparkles className="h-4 w-4"/>
-                    <span>Run AI Diagnostic</span>
-                  </>)}
-              </Button>
-            </div>
-          </div>
-        </div>
-
-        {/* Diagnostic Results Section (Apple HomeView Cards & Metrics) */}
-        {diagnosticResult && (<section className="bg-white border border-[#e5e7eb] rounded-2xl p-6 sm:p-8 space-y-7 animate-fade-in">
-            {/* Header row */}
-            <div className="border-b border-[#e5e7eb] pb-6">
-              <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-5">
-                <div>
-                  <div className="inline-flex items-center gap-1.5 px-3 py-0.5 rounded-full bg-[#0071e3]/10 text-[#0071e3] text-[12px] font-semibold mb-2">
-                    <Brain className="h-3.5 w-3.5"/>
-                    AUDIT REPORT
-                  </div>
-                  <h2 className="text-xl sm:text-2xl font-semibold text-[#1d1d1f] tracking-tight">
-                    Competency Benchmark Overview
-                  </h2>
-                  <div className="text-[13px] text-[#86868b] mt-1">
-                    Evaluated against:{" "}
-                    <strong className="text-[#1d1d1f] font-medium">{diagnosticResult.targetJobTitle}</strong> •{" "}
-                    <span className="font-mono text-[#86868b]">{diagnosticResult.targetJobCode}</span> (
-                    {diagnosticResult.targetNSQF})
-                  </div>
-                  <div className="mt-2.5">
-                    {diagnosticResult.isGeminiPowered ? (
-                      <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200 text-xs font-medium">
-                        <Sparkles className="h-3.5 w-3.5 text-emerald-600" />
-                        <span>Generative AI: <strong>Google Gemini 1.5 Flash</strong></span>
-                      </span>
-                    ) : (
-                      <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-[#f5f5f7] text-[#1d1d1f] border border-[#e5e7eb] text-xs font-medium">
-                        <Brain className="h-3.5 w-3.5 text-[#0071e3]" />
-                        <span>Statutory Engine: <strong>PMKVY National Occupational Standards</strong></span>
-                      </span>
-                    )}
-                  </div>
-                </div>
-
-                <div className="flex items-center gap-2.5 flex-wrap">
-                  <Button variant="outline" size="sm" onClick={() => window.print()} className="rounded-full text-[13px] border-[#d2d2d7] text-[#1d1d1f] hover:bg-[#f5f5f7] h-[38px] px-4">
-                    <Download className="h-3.5 w-3.5 mr-1 text-[#86868b]"/>
-                    Export PDF
-                  </Button>
-                  <Button size="sm" onClick={syncToProfile} disabled={savingProfile || profileSaved} className={`rounded-full text-[13px] font-medium h-[38px] px-5 shadow-none ${profileSaved
-                ? "bg-[#34c759] text-white hover:bg-[#28a745]"
-                : "bg-[#0071e3] text-white hover:bg-[#0077ed]"}`}>
-                    {profileSaved ? (<>
-                        <Check className="h-3.5 w-3.5 mr-1"/>
-                        Saved to Passport
-                      </>) : (<>
-                        <ShieldCheck className="h-3.5 w-3.5 mr-1"/>
-                        {savingProfile ? "Syncing..." : "Sync to Profile"}
-                      </>)}
-                  </Button>
-                </div>
-              </div>
-
-              {/* Metric Cards Bento */}
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4">
-                {/* Gauge Card (2 Cols) */}
-                <div className="lg:col-span-2 bg-[#f5f5f7] border border-[#e5e7eb] rounded-2xl p-5 flex items-center gap-5">
-                  <div className="relative w-20 h-20 shrink-0 flex items-center justify-center">
-                    <svg className="w-full h-full transform -rotate-90" viewBox="0 0 36 36">
-                      <path className="text-[#e5e7eb]" d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831" fill="none" stroke="currentColor" strokeWidth="3.5"/>
-                      <path className={`${diagnosticResult.matchPercentage >= 75
-                ? "text-[#34c759]"
-                : diagnosticResult.matchPercentage >= 50
-                    ? "text-[#0071e3]"
-                    : "text-[#ff3b30]"}`} d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831" fill="none" stroke="currentColor" strokeDasharray={`${diagnosticResult.matchPercentage}, 100`} strokeLinecap="round" strokeWidth="3.8"/>
-                    </svg>
-                    <div className="absolute inset-0 flex flex-col items-center justify-center text-center">
-                      <span className="text-xl font-bold text-[#1d1d1f] leading-none">
-                        {diagnosticResult.matchPercentage}%
-                      </span>
-                    </div>
-                  </div>
-
-                  <div>
-                    <span className={`inline-flex items-center gap-1 text-[11px] font-semibold px-2.5 py-0.5 rounded-full mb-1 ${diagnosticResult.matchPercentage >= 75
-                ? "bg-[#34c759]/10 text-[#248a3d]"
-                : diagnosticResult.matchPercentage >= 50
-                    ? "bg-[#0071e3]/10 text-[#0071e3]"
-                    : "bg-[#ff3b30]/10 text-[#ff3b30]"}`}>
-                      {diagnosticResult.readinessGrade}
-                    </span>
-                    <h3 className="text-[14px] font-semibold text-[#1d1d1f]">{diagnosticResult.advisory.headline}</h3>
-                    <p className="text-[12px] text-[#86868b] mt-0.5 leading-relaxed">
-                      {diagnosticResult.advisory.message}
-                    </p>
-                  </div>
-                </div>
-
-                {/* Total Evaluated */}
-                <div className="bg-[#f5f5f7] border border-[#e5e7eb] rounded-2xl p-5 flex flex-col justify-between">
-                  <span className="text-[11px] font-semibold text-[#86868b] uppercase tracking-wider">
-                    Total Skills
-                  </span>
-                  <div>
-                    <div className="text-2xl font-bold text-[#1d1d1f]">
-                      {diagnosticResult.summaryMetrics.totalEvaluated}
-                    </div>
-                    <div className="text-[12px] text-[#86868b]">NOS Units</div>
-                  </div>
-                  <div className="w-full bg-[#e5e7eb] h-1.5 rounded-full">
-                    <div className="bg-[#1d1d1f] h-1.5 rounded-full w-full"/>
-                  </div>
-                </div>
-
-                {/* Verified Match */}
-                <div className="bg-[#f5f5f7] border border-[#e5e7eb] rounded-2xl p-5 flex flex-col justify-between">
-                  <span className="text-[11px] font-semibold text-[#34c759] uppercase tracking-wider">
-                    Matched Skills
-                  </span>
-                  <div>
-                    <div className="text-2xl font-bold text-[#34c759]">
-                      {diagnosticResult.summaryMetrics.matchedVerified}
-                    </div>
-                    <div className="text-[12px] text-[#86868b]">Verified</div>
-                  </div>
-                  <div className="w-full bg-[#e5e7eb] h-1.5 rounded-full">
-                    <div className="bg-[#34c759] h-1.5 rounded-full" style={{
-                width: `${diagnosticResult.summaryMetrics.totalEvaluated > 0
-                    ? (diagnosticResult.summaryMetrics.matchedVerified /
-                        diagnosticResult.summaryMetrics.totalEvaluated) *
-                        100
-                    : 0}%`,
-            }}/>
-                  </div>
-                </div>
-
-                {/* Critical Gaps */}
-                <div className="bg-[#f5f5f7] border border-[#e5e7eb] rounded-2xl p-5 flex flex-col justify-between">
-                  <span className="text-[11px] font-semibold text-[#ff3b30] uppercase tracking-wider">
-                    Skill Gaps
-                  </span>
-                  <div>
-                    <div className="text-2xl font-bold text-[#ff3b30]">
-                      {diagnosticResult.summaryMetrics.criticalGaps}
-                    </div>
-                    <div className="text-[12px] text-[#86868b]">Remediation Needed</div>
-                  </div>
-                  <div className="w-full bg-[#e5e7eb] h-1.5 rounded-full">
-                    <div className="bg-[#ff3b30] h-1.5 rounded-full" style={{
-                width: `${diagnosticResult.summaryMetrics.totalEvaluated > 0
-                    ? (diagnosticResult.summaryMetrics.criticalGaps /
-                        diagnosticResult.summaryMetrics.totalEvaluated) *
-                        100
-                    : 0}%`,
-            }}/>
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            {/* Competency Gap Matrix Table */}
-            <div className="space-y-4">
-              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-                <div>
-                  <h3 className="text-[17px] font-semibold text-[#1d1d1f]">Competency & NOS Gap Matrix</h3>
-                  <p className="text-[13px] text-[#86868b]">
-                    Detailed breakdown cross-referenced with your resume evidence
-                  </p>
-                </div>
-
-                {/* Search & Filter Tabs */}
-                <div className="flex items-center gap-2 flex-wrap">
-                  <div className="relative">
-                    <input type="text" placeholder="Filter competencies..." value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} className="text-[13px] bg-white border border-[#d2d2d7] rounded-full pl-8 pr-3 py-1.5 text-[#1d1d1f] focus:outline-none focus:border-[#0071e3]"/>
-                    <Search className="h-3.5 w-3.5 text-[#86868b] absolute left-3 top-2.5"/>
-                  </div>
-
-                  <div className="inline-flex p-1 bg-[#f5f5f7] rounded-full border border-[#e5e7eb] text-[12px]">
-                    <button type="button" onClick={() => setActiveMatrixTab("ALL")} className={`px-3 py-1 rounded-full font-medium transition-all ${activeMatrixTab === "ALL"
-                ? "bg-white text-[#1d1d1f] shadow-xs"
-                : "text-[#86868b] hover:text-[#1d1d1f]"}`}>
-                      All ({diagnosticResult.skillsMatrix.length})
-                    </button>
-                    <button type="button" onClick={() => setActiveMatrixTab("MATCHED")} className={`px-3 py-1 rounded-full font-medium transition-all ${activeMatrixTab === "MATCHED"
-                ? "bg-white text-[#34c759] shadow-xs"
-                : "text-[#86868b] hover:text-[#34c759]"}`}>
-                      Matched ({diagnosticResult.summaryMetrics.matchedVerified})
-                    </button>
-                    <button type="button" onClick={() => setActiveMatrixTab("CRITICAL")} className={`px-3 py-1 rounded-full font-medium transition-all ${activeMatrixTab === "CRITICAL"
-                ? "bg-white text-[#ff3b30] shadow-xs"
-                : "text-[#86868b] hover:text-[#ff3b30]"}`}>
-                      Gaps ({diagnosticResult.summaryMetrics.criticalGaps})
-                    </button>
-                  </div>
-                </div>
-              </div>
-
-              {/* Table */}
-              <div className="overflow-x-auto border border-[#e5e7eb] rounded-2xl">
-                <table className="w-full text-left border-collapse text-[13px]">
-                  <thead>
-                    <tr className="bg-[#f5f5f7] border-b border-[#e5e7eb] text-[11px] font-semibold uppercase tracking-wider text-[#86868b]">
-                      <th className="py-3 px-4">NOS Code</th>
-                      <th className="py-3 px-4">Competency Unit</th>
-                      <th className="py-3 px-4">Status</th>
-                      <th className="py-3 px-4">Evidence in Resume</th>
-                      <th className="py-3 px-4 text-right">Action</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-[#e5e7eb] bg-white">
-                    {filteredSkills.length === 0 ? (<tr>
-                        <td colSpan={5} className="py-8 text-center text-[#86868b]">
-                          No competencies found matching your filter.
-                        </td>
-                      </tr>) : (filteredSkills.map((skill, idx) => (<tr key={idx} className="hover:bg-[#f5f5f7]/50 transition-colors">
-                          <td className="py-3.5 px-4 font-mono font-medium text-[#0071e3]">{skill.nosCode}</td>
-                          <td className="py-3.5 px-4">
-                            <div className="font-medium text-[#1d1d1f]">{skill.skillName}</div>
-                            <div className="text-[11px] text-[#86868b]">
-                              Required: {skill.requiredProficiency}% • {skill.importance}
-                            </div>
-                          </td>
-                          <td className="py-3.5 px-4">
-                            <span className={`inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[12px] font-medium ${skill.status === "MATCHED"
-                    ? "bg-[#34c759]/10 text-[#248a3d]"
-                    : skill.status === "ENHANCEMENT_NEEDED"
-                        ? "bg-[#0071e3]/10 text-[#0071e3]"
-                        : "bg-[#ff3b30]/10 text-[#ff3b30]"}`}>
-                              <span className={`w-1.5 h-1.5 rounded-full ${skill.status === "MATCHED"
-                    ? "bg-[#34c759]"
-                    : skill.status === "ENHANCEMENT_NEEDED"
-                        ? "bg-[#0071e3]"
-                        : "bg-[#ff3b30]"}`}/>
-                              {skill.statusLabel}
-                            </span>
-                          </td>
-                          <td className="py-3.5 px-4 text-[#86868b] max-w-md">
-                            <div className="p-2.5 rounded-xl bg-[#f5f5f7] border border-[#e5e7eb] text-[12px] leading-relaxed text-[#1d1d1f]">
-                              &quot;{skill.resumeEvidence}&quot;
-                            </div>
-                          </td>
-                          <td className="py-3.5 px-4 text-right">
-                            {skill.status === "MATCHED" ? (<span className="inline-flex items-center gap-1 text-[#34c759] font-medium text-[12px]">
-                                <CheckCircle2 className="h-3.5 w-3.5"/> Verified
-                              </span>) : (<button type="button" onClick={() => {
-                        const course = diagnosticResult.recommendedCourses[0];
-                        if (course)
-                            setEnrollModalCourse(course);
-                    }} className="inline-flex items-center gap-1 text-[12px] font-medium text-[#0071e3] hover:underline cursor-pointer">
-                                Bridge Course <ArrowRight className="h-3 w-3"/>
-                              </button>)}
-                          </td>
-                        </tr>)))}
-                  </tbody>
-                </table>
-              </div>
-            </div>
-
-            {/* Recommended PMKVY Bridge Courses */}
-            <div className="pt-6 border-t border-[#e5e7eb] space-y-4">
-              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
-                <div>
-                  <h3 className="text-[17px] font-semibold text-[#1d1d1f] flex items-center gap-2">
-                    <BookOpen className="h-4 w-4 text-[#0071e3]"/>
-                    Recommended PMKVY 4.0 Bridge Courses
-                  </h3>
-                  <p className="text-[13px] text-[#86868b]">
-                    Targeted training to bridge identified skill gaps
-                  </p>
-                </div>
-                <Badge variant="success" className="text-[11px] font-medium self-start sm:self-auto">
-                  100% Subsidized
-                </Badge>
-              </div>
-
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                {diagnosticResult.recommendedCourses.map((course) => (<Card key={course.id} className="border-[#e5e7eb] rounded-2xl flex flex-col justify-between">
-                    <CardHeader className="p-5 pb-2">
-                      <div className="flex items-center justify-between mb-1">
-                        <span className="text-[11px] font-medium px-2 py-0.5 rounded-full bg-[#0071e3]/10 text-[#0071e3]">
-                          {course.category}
-                        </span>
-                        <span className="text-[12px] text-[#86868b]">{course.duration}</span>
+                      <div className="relative">
+                        <input
+                          type="url"
+                          placeholder="https://careers.company.com/jobs/... or https://www.linkedin.com/jobs/view/..."
+                          value={linkedinUrl}
+                          onChange={(e) => setLinkedinUrl(e.target.value)}
+                          className="w-full h-9 text-[13px] bg-white border border-[#CBD5E1] rounded-lg pl-9 pr-3 text-[#0F172A] focus:outline-none focus:border-[#4F46E5]"
+                        />
+                        <LinkIcon className="h-4 w-4 text-[#64748B] absolute left-3 top-2.5" />
                       </div>
-                      <CardTitle className="text-[15px] font-semibold text-[#1d1d1f] leading-snug">
-                        {course.name}
-                      </CardTitle>
-                      <CardDescription className="text-[12px] text-[#86868b]">
-                        {course.provider}
-                      </CardDescription>
-                    </CardHeader>
+                      <p className="mt-1 text-[11px] text-[#64748B]">
+                        Public career pages are extracted automatically; paste JD text below if the job portal requires sign-in.
+                      </p>
+                    </div>
 
-                    <CardContent className="p-5 pt-0 space-y-3">
-                      <div>
-                        <div className="text-[11px] font-semibold text-[#86868b] uppercase tracking-wide mb-1.5">
-                          Bridged Gaps:
-                        </div>
-                        <div className="flex flex-wrap gap-1">
-                          {course.skillsAddressed.map((sk, i) => (<span key={i} className="px-2 py-0.5 rounded-full text-[10px] font-medium bg-[#ff3b30]/10 text-[#ff3b30]">
-                              {sk}
-                            </span>))}
-                        </div>
+                    <div>
+                      <label className="block text-[12px] font-medium text-[#0F172A] mb-1">
+                        Job Requirements / Description (Optional if URL is public)
+                      </label>
+                      <textarea
+                        rows={5}
+                        placeholder="Paste key responsibilities or required technical stack..."
+                        value={jobDescriptionText}
+                        onChange={(e) => setJobDescriptionText(e.target.value)}
+                        className="w-full text-[12px] font-mono bg-white border border-[#CBD5E1] rounded-lg p-3 text-[#0F172A] focus:outline-none focus:border-[#4F46E5]"
+                      />
+                    </div>
+
+                    <div>
+                      <div className="font-mono text-[10px] font-semibold text-[#64748B] uppercase tracking-wider mb-1.5">
+                        Sample Postings (1-Click)
                       </div>
-
-                      <div className="p-3 rounded-xl bg-[#f5f5f7] text-[12px] text-[#1d1d1f] space-y-1">
-                        <div>✓ {course.subsidyStatus}</div>
-                        <div>✓ {course.stipend}</div>
+                      <div className="flex flex-wrap gap-1.5">
+                        <button
+                          type="button"
+                          onClick={() => loadSampleLinkedInJob("frontend_fintech")}
+                          className="px-2.5 py-1 rounded-md text-[12px] bg-[#F1F5F9] hover:bg-[#EAEDFF] text-[#0F172A] border border-[#E2E8F0] font-medium cursor-pointer"
+                        >
+                          Sr. React Developer @ FinTech
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => loadSampleLinkedInJob("ev_powertrain")}
+                          className="px-2.5 py-1 rounded-md text-[12px] bg-[#F1F5F9] hover:bg-[#EAEDFF] text-[#0F172A] border border-[#E2E8F0] font-medium cursor-pointer"
+                        >
+                          EV Powertrain Engineer @ AutoTech
+                        </button>
                       </div>
-                    </CardContent>
-
-                    <CardFooter className="p-5 pt-0">
-                      <Button size="sm" onClick={() => setEnrollModalCourse(course)} className="w-full bg-[#0071e3] hover:bg-[#0077ed] text-white text-[13px] font-medium rounded-full h-[38px] shadow-none">
-                        Enroll via Skill India <ArrowRight className="h-3.5 w-3.5 ml-1"/>
-                      </Button>
-                    </CardFooter>
-                  </Card>))}
-              </div>
-            </div>
-          </section>)}
-
-        {/* Enrollment Modal */}
-        {enrollModalCourse && (<div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/30 backdrop-blur-xs">
-            <div className="bg-white rounded-3xl border border-[#e5e7eb] shadow-xl max-w-lg w-full p-6 sm:p-7 space-y-5 animate-fade-in">
-              <div className="flex items-start justify-between border-b border-[#e5e7eb] pb-4">
-                <div>
-                  <span className="text-[11px] font-semibold text-[#0071e3] bg-[#0071e3]/10 px-2.5 py-0.5 rounded-full inline-block mb-1">
-                    PMKVY 4.0 Direct Enrollment
-                  </span>
-                  <h3 className="text-[18px] font-semibold text-[#1d1d1f]">{enrollModalCourse.name}</h3>
-                  <p className="text-[13px] text-[#86868b]">{enrollModalCourse.provider}</p>
-                </div>
-                <button type="button" onClick={() => setEnrollModalCourse(null)} className="text-[#86868b] hover:text-[#1d1d1f] text-sm font-bold cursor-pointer">
-                  ✕
-                </button>
+                    </div>
+                  </div>
+                )}
               </div>
 
-              <div className="space-y-3.5 text-[13px] text-[#1d1d1f]">
-                <div className="p-4 bg-[#f5f5f7] rounded-2xl border border-[#e5e7eb] space-y-2">
-                  <div className="flex justify-between">
-                    <span className="text-[#86868b]">Accredited Body:</span>
-                    <span className="font-medium text-[#1d1d1f]">NSDC</span>
-                  </div>
-                  <div className="flex justify-between">
-                    <span className="text-[#86868b]">Training Duration:</span>
-                    <span className="font-medium text-[#1d1d1f]">{enrollModalCourse.duration}</span>
-                  </div>
-                  <div className="flex justify-between">
-                    <span className="text-[#86868b]">Tuition Fee:</span>
-                    <span className="font-medium text-[#34c759]">100% Free Subsidized</span>
-                  </div>
-                  <div className="flex justify-between">
-                    <span className="text-[#86868b]">Candidate Stipend:</span>
-                    <span className="font-medium text-[#34c759]">{enrollModalCourse.stipend}</span>
-                  </div>
-                </div>
-
-                <p className="text-[13px] text-[#86868b] leading-relaxed">
-                  Upon confirmation, your candidate profile is transmitted to the official Skill India Digital
-                  training centre for instant batch scheduling.
-                </p>
-              </div>
-
-              <div className="flex items-center justify-end gap-3 pt-3 border-t border-[#e5e7eb]">
-                <Button variant="outline" size="sm" onClick={() => setEnrollModalCourse(null)} className="rounded-full text-[13px] border-[#d2d2d7] text-[#1d1d1f] hover:bg-[#f5f5f7] h-[40px] px-5">
-                  Cancel
-                </Button>
-                <a href={enrollModalCourse.officialPortalUrl} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1.5 px-6 py-2 rounded-full bg-[#0071e3] hover:bg-[#0077ed] text-white font-medium text-[13px] h-[40px] transition-colors">
-                  Confirm on Portal <ExternalLink className="h-3.5 w-3.5 ml-1"/>
+              <div className="pt-3 border-t border-[#F1F5F9] flex items-center justify-between text-[12px] text-[#64748B]">
+                <span className="flex items-center gap-1.5 font-mono text-[11px] text-[#065F46]">
+                  <CheckCircle2 className="h-3.5 w-3.5 text-[#10B981]" />
+                  NSQF Aligned
+                </span>
+                <a
+                  href="https://www.skillindiadigital.gov.in"
+                  target="_blank"
+                  rel="noreferrer"
+                  className="text-[#4F46E5] font-medium hover:underline inline-flex items-center gap-1"
+                >
+                  Skill India Digital <ExternalLink className="h-3 w-3" />
                 </a>
               </div>
             </div>
-          </div>)}
-      </div>
-    </DashboardLayout>);
+
+            {/* Candidate Resume Ingestion Column */}
+            <div className="lg:col-span-7 prepp-card p-5 sm:p-6 flex flex-col justify-between space-y-5">
+              <div className="space-y-4">
+                <div className="flex items-center justify-between pb-3 border-b border-[#F1F5F9]">
+                  <div className="flex items-center gap-2.5">
+                    <div className="w-8 h-8 rounded-lg bg-[#EAEDFF] text-[#3525CD] flex items-center justify-center">
+                      <FileText className="h-4 w-4" />
+                    </div>
+                    <div>
+                      <h2 className="font-display text-[15px] font-semibold text-[#0F172A]">Candidate Resume / CV</h2>
+                      <p className="text-[12px] text-[#64748B]">Upload document or paste plain resume text</p>
+                    </div>
+                  </div>
+                  <span className="font-mono text-[10px] px-2 py-0.5 rounded bg-[#F1F5F9] border border-[#E2E8F0] text-[#475569] font-semibold">
+                    STEP 02
+                  </span>
+                </div>
+
+                {/* Drop Zone */}
+                <div
+                  onClick={() => fileInputRef.current?.click()}
+                  onDragOver={(e) => e.preventDefault()}
+                  onDrop={(e) => {
+                    e.preventDefault();
+                    const file = e.dataTransfer.files?.[0];
+                    if (file) handleFileSelection(file);
+                  }}
+                  className="border border-dashed border-[#CBD5E1] hover:border-[#4F46E5] rounded-xl p-6 text-center bg-[#F8FAFC] hover:bg-[#F2F3FF]/50 transition-all cursor-pointer group"
+                >
+                  <input
+                    type="file"
+                    ref={fileInputRef}
+                    onChange={handleFileInputChange}
+                    accept=".pdf,.txt,.md,.rtf,.json,.csv"
+                    className="hidden"
+                  />
+
+                  <div className="w-10 h-10 rounded-lg bg-white border border-[#E2E8F0] flex items-center justify-center mx-auto mb-2.5 group-hover:border-[#4F46E5]/40 transition-colors">
+                    <Upload className="h-4.5 w-4.5 text-[#4F46E5]" />
+                  </div>
+
+                  <div className="text-[13px] font-medium text-[#0F172A]">
+                    Drop resume (PDF, TXT, MD) or <span className="text-[#4F46E5] underline">Browse files</span>
+                  </div>
+                  <p className="font-mono text-[11px] text-[#64748B] mt-1">
+                    Parsed securely • Benchmarked against official QP-NOS matrices
+                  </p>
+
+                  {uploadedFileMeta && (
+                    <div className="mt-3 inline-flex items-center gap-2 px-3 py-1 rounded-full bg-white border border-[#A7F3D0] text-[12px]">
+                      <CheckCircle2 className="h-3.5 w-3.5 text-[#10B981]" />
+                      <span className="font-medium text-[#0F172A] truncate max-w-xs">{uploadedFileMeta.name}</span>
+                      <span className="font-mono text-[11px] text-[#64748B]">({uploadedFileMeta.size})</span>
+                    </div>
+                  )}
+                </div>
+
+                {fileParseWarning && (
+                  <div className="p-3 rounded-lg bg-[#FEF2F2] border border-[#FECACA] text-[#991B1B] text-[12px] flex items-start gap-2">
+                    <AlertTriangle className="h-4 w-4 shrink-0 mt-0.5" />
+                    <span>{fileParseWarning}</span>
+                  </div>
+                )}
+
+                <div>
+                  <div className="flex items-center justify-between mb-1.5">
+                    <button
+                      type="button"
+                      onClick={() => setShowTextPreview(!showTextPreview)}
+                      className="text-[12px] font-medium text-[#4F46E5] hover:underline flex items-center gap-1.5 cursor-pointer"
+                    >
+                      <Eye className="h-3.5 w-3.5" />
+                      {showTextPreview ? "Hide Resume Buffer" : "View / Edit Extracted Text"}
+                      {resumeText ? ` (${resumeText.length} chars)` : ""}
+                    </button>
+                    {resumeText && (
+                      <span className="font-mono text-[11px] text-[#065F46] font-medium">✓ Content ready</span>
+                    )}
+                  </div>
+
+                  {showTextPreview && (
+                    <textarea
+                      rows={6}
+                      value={resumeText}
+                      onChange={(e) => setResumeText(e.target.value)}
+                      placeholder="Paste or edit candidate resume text here..."
+                      className="w-full text-[12px] font-mono bg-[#F8FAFC] border border-[#CBD5E1] rounded-lg p-3 text-[#0F172A] focus:outline-none focus:border-[#4F46E5]"
+                    />
+                  )}
+                </div>
+
+                {/* 1-Click Sample Resumes */}
+                <div>
+                  <div className="font-mono text-[10px] font-semibold text-[#64748B] uppercase tracking-wider mb-1.5">
+                    Load Test Resumes (1-Click)
+                  </div>
+                  <div className="flex flex-wrap gap-1.5">
+                    <button
+                      type="button"
+                      onClick={() => loadSampleResume("fullstack")}
+                      className="px-2.5 py-1 rounded-md text-[12px] bg-[#F1F5F9] hover:bg-[#EAEDFF] text-[#0F172A] border border-[#E2E8F0] font-medium transition-colors cursor-pointer"
+                    >
+                      Arun (React / Full Stack)
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => loadSampleResume("ev_tech")}
+                      className="px-2.5 py-1 rounded-md text-[12px] bg-[#F1F5F9] hover:bg-[#EAEDFF] text-[#0F172A] border border-[#E2E8F0] font-medium transition-colors cursor-pointer"
+                    >
+                      Aaditya (ITI EV Tech)
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => loadSampleResume("data_analyst")}
+                      className="px-2.5 py-1 rounded-md text-[12px] bg-[#F1F5F9] hover:bg-[#EAEDFF] text-[#0F172A] border border-[#E2E8F0] font-medium transition-colors cursor-pointer"
+                    >
+                      Priya (Data Analyst)
+                    </button>
+                  </div>
+                </div>
+              </div>
+
+              {/* Action Controls */}
+              <div className="pt-4 border-t border-[#F1F5F9] flex flex-col sm:flex-row items-center justify-between gap-3">
+                <Button type="button" variant="outline" size="sm" onClick={resetInputs} className="w-full sm:w-auto">
+                  Clear Buffer
+                </Button>
+
+                <Button type="button" onClick={runDiagnostic} disabled={analyzing} size="lg" className="w-full sm:w-auto">
+                  {analyzing ? (
+                    <>
+                      <RefreshCw className="h-4 w-4 animate-spin" />
+                      <span>Evaluating Competencies...</span>
+                    </>
+                  ) : (
+                    <>
+                      <Sparkles className="h-4 w-4" />
+                      <span>Run AI Diagnostic</span>
+                      <ArrowRight className="h-4 w-4" />
+                    </>
+                  )}
+                </Button>
+              </div>
+            </div>
+          </div>
+
+          {/* Diagnostic Audit Report Section */}
+          {diagnosticResult && (
+            <section className="prepp-card p-6 sm:p-7 space-y-6 animate-fade-in">
+              <div className="border-b border-[#E2E8F0] pb-5">
+                <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-5">
+                  <div>
+                    <div className="flex flex-wrap items-center gap-2 mb-2">
+                      <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-[#EAEDFF] text-[#3525CD] font-mono text-[11px] font-semibold">
+                        <Brain className="h-3.5 w-3.5" /> AUDIT REPORT
+                      </span>
+                      {diagnosticResult.isGeminiPowered ? (
+                        <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-[#ECFDF5] text-[#065F46] border border-[#A7F3D0] font-mono text-[11px] font-medium">
+                          {diagnosticResult.geminiModel
+                            ? `✨ Google Gemini (${diagnosticResult.geminiModel})`
+                            : "✨ Google Gemini AI"}
+                        </span>
+                      ) : (
+                        <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-[#F1F5F9] text-[#475569] border border-[#E2E8F0] font-mono text-[11px] font-medium">
+                          ⚡ PMKVY NOS Local Engine
+                        </span>
+                      )}
+                      {diagnosticResult.jobSourceInfo?.fetchStatus === "fetched" && (
+                        <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-[#EAEDFF] text-[#3525CD] border border-[#C7C4D8] font-mono text-[11px] font-medium">
+                          🌐 Live Job Page Extracted
+                        </span>
+                      )}
+                      {diagnosticResult.jobSourceInfo?.fetchStatus === "gated" && (
+                        <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-[#FFFBEB] text-[#92400E] border border-[#FDE68A] font-mono text-[11px] font-medium">
+                          ⚠ URL Login-Gated (Analyzed URL + JD)
+                        </span>
+                      )}
+                    </div>
+                    <h2 className="font-display text-xl sm:text-2xl font-semibold text-[#0F172A] tracking-tight">
+                      Competency Benchmark Overview
+                    </h2>
+                    <div className="text-[13px] text-[#64748B] mt-1">
+                      Evaluated against:{" "}
+                      <strong className="text-[#0F172A] font-semibold">{diagnosticResult.targetJobTitle}</strong> •{" "}
+                      <span className="font-mono text-[#4F46E5]">{diagnosticResult.targetJobCode}</span> ({diagnosticResult.targetNSQF})
+                    </div>
+                  </div>
+
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <Button variant="outline" size="sm" onClick={() => window.print()}>
+                      <Download className="h-3.5 w-3.5 text-[#64748B]" />
+                      <span>Export PDF</span>
+                    </Button>
+                    <Button
+                      size="sm"
+                      onClick={syncToProfile}
+                      disabled={savingProfile || profileSaved}
+                      className={profileSaved ? "bg-[#10B981] hover:bg-[#059669]" : ""}
+                    >
+                      {profileSaved ? (
+                        <>
+                          <Check className="h-3.5 w-3.5" />
+                          <span>Saved to Passport</span>
+                        </>
+                      ) : (
+                        <>
+                          <ShieldCheck className="h-3.5 w-3.5" />
+                          <span>{savingProfile ? "Syncing..." : "Sync to Profile"}</span>
+                        </>
+                      )}
+                    </Button>
+                  </div>
+                </div>
+
+                {/* Metric Cards Bento */}
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4">
+                  <div className="lg:col-span-2 bg-[#F8FAFC] border border-[#E2E8F0] rounded-xl p-4 flex items-center gap-4">
+                    <div className="relative w-20 h-20 shrink-0 flex items-center justify-center">
+                      <svg className="w-full h-full transform -rotate-90" viewBox="0 0 36 36">
+                        <path
+                          className="text-[#E2E8F0]"
+                          d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831"
+                          fill="none"
+                          stroke="currentColor"
+                          strokeWidth="3.5"
+                        />
+                        <path
+                          className={
+                            diagnosticResult.matchPercentage >= 75
+                              ? "text-[#10B981]"
+                              : diagnosticResult.matchPercentage >= 50
+                              ? "text-[#4F46E5]"
+                              : "text-[#BA1A1A]"
+                          }
+                          d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831"
+                          fill="none"
+                          stroke="currentColor"
+                          strokeDasharray={`${diagnosticResult.matchPercentage}, 100`}
+                          strokeLinecap="round"
+                          strokeWidth="3.8"
+                        />
+                      </svg>
+                      <div className="absolute inset-0 flex items-center justify-center">
+                        <span className="font-mono text-lg font-bold text-[#0F172A]">
+                          {diagnosticResult.matchPercentage}%
+                        </span>
+                      </div>
+                    </div>
+
+                    <div>
+                      <span
+                        className={`inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-mono font-semibold mb-1 border ${
+                          diagnosticResult.matchPercentage >= 75
+                            ? "bg-[#ECFDF5] text-[#065F46] border-[#A7F3D0]"
+                            : diagnosticResult.matchPercentage >= 50
+                            ? "bg-[#FFFBEB] text-[#92400E] border-[#FDE68A]"
+                            : "bg-[#FEF2F2] text-[#991B1B] border-[#FECACA]"
+                        }`}
+                      >
+                        {diagnosticResult.readinessGrade}
+                      </span>
+                      <h3 className="font-display text-[14px] font-semibold text-[#0F172A]">
+                        {diagnosticResult.advisory.headline}
+                      </h3>
+                      <p className="text-[12px] text-[#64748B] mt-0.5 leading-relaxed">
+                        {diagnosticResult.advisory.message}
+                      </p>
+                    </div>
+                  </div>
+
+                  <div className="bg-[#F8FAFC] border border-[#E2E8F0] rounded-xl p-4 flex flex-col justify-between">
+                    <span className="font-mono text-[11px] text-[#64748B] uppercase">Total Evaluated</span>
+                    <div>
+                      <div className="font-mono text-2xl font-bold text-[#0F172A]">
+                        {diagnosticResult.summaryMetrics.totalEvaluated}
+                      </div>
+                      <div className="text-[12px] text-[#64748B]">NOS Competency Units</div>
+                    </div>
+                    <div className="w-full bg-[#E2E8F0] h-1.5 rounded-full">
+                      <div className="bg-[#0F172A] h-1.5 rounded-full w-full" />
+                    </div>
+                  </div>
+
+                  <div className="bg-[#F8FAFC] border border-[#E2E8F0] rounded-xl p-4 flex flex-col justify-between">
+                    <span className="font-mono text-[11px] text-[#065F46] uppercase">Verified Match</span>
+                    <div>
+                      <div className="font-mono text-2xl font-bold text-[#10B981]">
+                        {diagnosticResult.summaryMetrics.matchedVerified}
+                      </div>
+                      <div className="text-[12px] text-[#64748B]">Criteria Met</div>
+                    </div>
+                    <div className="w-full bg-[#E2E8F0] h-1.5 rounded-full">
+                      <div
+                        className="bg-[#10B981] h-1.5 rounded-full"
+                        style={{
+                          width: `${
+                            diagnosticResult.summaryMetrics.totalEvaluated > 0
+                              ? (diagnosticResult.summaryMetrics.matchedVerified /
+                                    diagnosticResult.summaryMetrics.totalEvaluated) *
+                                100
+                              : 0
+                          }%`,
+                        }}
+                      />
+                    </div>
+                  </div>
+
+                  <div className="bg-[#F8FAFC] border border-[#E2E8F0] rounded-xl p-4 flex flex-col justify-between">
+                    <span className="font-mono text-[11px] text-[#991B1B] uppercase">Critical Gaps</span>
+                    <div>
+                      <div className="font-mono text-2xl font-bold text-[#BA1A1A]">
+                        {diagnosticResult.summaryMetrics.criticalGaps}
+                      </div>
+                      <div className="text-[12px] text-[#64748B]">Remediation Required</div>
+                    </div>
+                    <div className="w-full bg-[#E2E8F0] h-1.5 rounded-full">
+                      <div
+                        className="bg-[#BA1A1A] h-1.5 rounded-full"
+                        style={{
+                          width: `${
+                            diagnosticResult.summaryMetrics.totalEvaluated > 0
+                              ? (diagnosticResult.summaryMetrics.criticalGaps /
+                                    diagnosticResult.summaryMetrics.totalEvaluated) *
+                                100
+                              : 0
+                          }%`,
+                        }}
+                      />
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* Matrix Table */}
+              <div className="space-y-3.5">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                  <div>
+                    <h3 className="font-display text-[16px] font-semibold text-[#0F172A]">
+                      Competency &amp; NOS Gap Matrix
+                    </h3>
+                    <p className="text-[12px] text-[#64748B]">
+                      Cross-referenced evidence snippets from candidate resume
+                    </p>
+                  </div>
+
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <div className="relative">
+                      <input
+                        type="text"
+                        placeholder="Filter skills or NOS..."
+                        value={searchQuery}
+                        onChange={(e) => setSearchQuery(e.target.value)}
+                        className="h-8 text-[12px] bg-white border border-[#CBD5E1] rounded-lg pl-8 pr-3 text-[#0F172A] focus:outline-none focus:border-[#4F46E5]"
+                      />
+                      <Search className="h-3.5 w-3.5 text-[#64748B] absolute left-2.5 top-2.5" />
+                    </div>
+
+                    <div className="inline-flex p-0.5 bg-[#F1F5F9] rounded-lg border border-[#E2E8F0] text-[12px]">
+                      <button
+                        type="button"
+                        onClick={() => setActiveMatrixTab("ALL")}
+                        className={`px-2.5 py-1 rounded-md font-medium transition-all cursor-pointer ${
+                          activeMatrixTab === "ALL" ? "bg-white text-[#0F172A] shadow-xs" : "text-[#64748B]"
+                        }`}
+                      >
+                        All ({diagnosticResult.skillsMatrix.length})
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setActiveMatrixTab("MATCHED")}
+                        className={`px-2.5 py-1 rounded-md font-medium transition-all cursor-pointer ${
+                          activeMatrixTab === "MATCHED" ? "bg-white text-[#065F46] shadow-xs" : "text-[#64748B]"
+                        }`}
+                      >
+                        Matched ({diagnosticResult.summaryMetrics.matchedVerified})
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setActiveMatrixTab("CRITICAL")}
+                        className={`px-2.5 py-1 rounded-md font-medium transition-all cursor-pointer ${
+                          activeMatrixTab === "CRITICAL" ? "bg-white text-[#991B1B] shadow-xs" : "text-[#64748B]"
+                        }`}
+                      >
+                        Gaps ({diagnosticResult.summaryMetrics.criticalGaps})
+                      </button>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="overflow-x-auto border border-[#E2E8F0] rounded-xl">
+                  <table className="w-full text-left border-collapse text-[13px]">
+                    <thead>
+                      <tr className="bg-[#F8FAFC] border-b border-[#E2E8F0] font-mono text-[11px] font-semibold uppercase tracking-wider text-[#64748B]">
+                        <th className="py-2.5 px-4">NOS Code</th>
+                        <th className="py-2.5 px-4">Competency Unit</th>
+                        <th className="py-2.5 px-4">Status</th>
+                        <th className="py-2.5 px-4">Resume Evidence</th>
+                        <th className="py-2.5 px-4 text-right">Action</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-[#E2E8F0] bg-white">
+                      {filteredSkills.length === 0 ? (
+                        <tr>
+                          <td colSpan={5} className="py-8 text-center text-[#64748B]">
+                            No competencies matching filter.
+                          </td>
+                        </tr>
+                      ) : (
+                        filteredSkills.map((skill, idx) => (
+                          <tr key={idx} className="hover:bg-[#F8FAFC] transition-colors">
+                            <td className="py-3.5 px-4 font-mono text-[12px] font-medium text-[#4F46E5] whitespace-nowrap">
+                              {skill.nosCode}
+                            </td>
+                            <td className="py-3.5 px-4">
+                              <div className="font-semibold text-[#0F172A]">{skill.skillName}</div>
+                              <div className="font-mono text-[11px] text-[#64748B]">
+                                Req: {skill.requiredProficiency}% • {skill.importance}
+                              </div>
+                            </td>
+                            <td className="py-3.5 px-4 whitespace-nowrap">
+                              <span
+                                className={`inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full font-mono text-[11px] font-medium border ${
+                                  skill.status === "MATCHED"
+                                    ? "bg-[#ECFDF5] text-[#065F46] border-[#A7F3D0]"
+                                    : skill.status === "ENHANCEMENT_NEEDED"
+                                    ? "bg-[#FFFBEB] text-[#92400E] border-[#FDE68A]"
+                                    : "bg-[#FEF2F2] text-[#991B1B] border-[#FECACA]"
+                                }`}
+                              >
+                                <span
+                                  className={`w-1.5 h-1.5 rounded-full ${
+                                    skill.status === "MATCHED"
+                                      ? "bg-[#10B981]"
+                                      : skill.status === "ENHANCEMENT_NEEDED"
+                                      ? "bg-[#F59E0B]"
+                                      : "bg-[#BA1A1A]"
+                                  }`}
+                                />
+                                {skill.statusLabel}
+                              </span>
+                            </td>
+                            <td className="py-3.5 px-4 max-w-md">
+                              <div className="p-2 rounded-lg bg-[#F8FAFC] border border-[#E2E8F0] font-mono text-[11px] leading-relaxed text-[#334155]">
+                                &quot;{skill.resumeEvidence}&quot;
+                              </div>
+                            </td>
+                            <td className="py-3.5 px-4 text-right whitespace-nowrap">
+                              {skill.status === "MATCHED" ? (
+                                <span className="inline-flex items-center gap-1 text-[#065F46] font-mono font-medium text-[11px]">
+                                  <CheckCircle2 className="h-3.5 w-3.5 text-[#10B981]" /> Verified
+                                </span>
+                              ) : (
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    const course = diagnosticResult.recommendedCourses[0];
+                                    if (course) setEnrollModalCourse(course);
+                                  }}
+                                  className="inline-flex items-center gap-1 text-[12px] font-medium text-[#4F46E5] hover:underline cursor-pointer"
+                                >
+                                  Bridge Course <ArrowRight className="h-3 w-3" />
+                                </button>
+                              )}
+                            </td>
+                          </tr>
+                        ))
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+
+              {/* Bridge Courses */}
+              <div className="pt-5 border-t border-[#E2E8F0] space-y-4">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                  <div>
+                    <h3 className="font-display text-[16px] font-semibold text-[#0F172A] flex items-center gap-2">
+                      <BookOpen className="h-4 w-4 text-[#4F46E5]" />
+                      Recommended PMKVY 4.0 Bridge Courses
+                    </h3>
+                    <p className="text-[12px] text-[#64748B]">
+                      Targeted NSDC training matched to your missing competencies
+                    </p>
+                  </div>
+                  <Badge variant="success">100% Govt Subsidized</Badge>
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                  {diagnosticResult.recommendedCourses.map((course) => (
+                    <Card key={course.id} className="prepp-card-interactive flex flex-col justify-between">
+                      <CardHeader className="p-4 pb-2">
+                        <div className="flex items-center justify-between mb-1">
+                          <Badge variant="secondary">{course.category}</Badge>
+                          <span className="font-mono text-[11px] text-[#64748B]">{course.duration}</span>
+                        </div>
+                        <CardTitle className="text-[15px] leading-snug">{course.name}</CardTitle>
+                        <CardDescription className="text-[12px]">{course.provider}</CardDescription>
+                      </CardHeader>
+
+                      <CardContent className="p-4 pt-2 space-y-3">
+                        <div>
+                          <div className="font-mono text-[10px] font-semibold text-[#64748B] uppercase tracking-wider mb-1">
+                            Bridges Missing Skills:
+                          </div>
+                          <div className="flex flex-wrap gap-1">
+                            {course.skillsAddressed.map((sk, i) => (
+                              <span
+                                key={i}
+                                className="px-2 py-0.5 rounded-full text-[10px] font-mono bg-[#FEF2F2] text-[#991B1B] border border-[#FECACA]"
+                              >
+                                {sk}
+                              </span>
+                            ))}
+                          </div>
+                        </div>
+
+                        <div className="p-2.5 rounded-lg bg-[#F8FAFC] border border-[#E2E8F0] text-[12px] text-[#334155] space-y-0.5">
+                          <div>✓ {course.subsidyStatus}</div>
+                          <div>✓ {course.stipend}</div>
+                        </div>
+                      </CardContent>
+
+                      <CardFooter className="p-4 pt-0">
+                        <Button size="sm" onClick={() => setEnrollModalCourse(course)} className="w-full">
+                          <span>Enroll via Skill India</span>
+                          <ArrowRight className="h-3.5 w-3.5" />
+                        </Button>
+                      </CardFooter>
+                    </Card>
+                  ))}
+                </div>
+              </div>
+            </section>
+          )}
+
+          {/* Direct Enrollment Modal */}
+          {enrollModalCourse && (
+            <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-[#0F172A]/40 backdrop-blur-[4px]">
+              <div className="bg-white rounded-xl border border-[#CBD5E1] shadow-[0_12px_32px_-4px_rgba(15,23,42,0.16)] max-w-lg w-full p-6 space-y-4 animate-fade-in">
+                <div className="flex items-start justify-between border-b border-[#E2E8F0] pb-3.5">
+                  <div>
+                    <Badge variant="secondary" className="mb-1">PMKVY 4.0 Direct Enrollment</Badge>
+                    <h3 className="font-display text-[17px] font-semibold text-[#0F172A]">{enrollModalCourse.name}</h3>
+                    <p className="text-[12px] text-[#64748B]">{enrollModalCourse.provider}</p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setEnrollModalCourse(null)}
+                    className="p-1 text-[#64748B] hover:text-[#0F172A] cursor-pointer"
+                  >
+                    ✕
+                  </button>
+                </div>
+
+                <div className="space-y-3 text-[13px] text-[#0F172A]">
+                  <div className="p-3.5 bg-[#F8FAFC] rounded-lg border border-[#E2E8F0] space-y-2">
+                    <div className="flex justify-between">
+                      <span className="text-[#64748B]">Accredited Body:</span>
+                      <span className="font-mono font-medium">NSDC</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-[#64748B]">Duration:</span>
+                      <span className="font-mono font-medium">{enrollModalCourse.duration}</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-[#64748B]">Tuition Fee:</span>
+                      <span className="font-mono font-medium text-[#065F46]">100% Free Subsidized</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-[#64748B]">Stipend Eligibility:</span>
+                      <span className="font-mono font-medium text-[#065F46]">{enrollModalCourse.stipend}</span>
+                    </div>
+                  </div>
+
+                  <p className="text-[12px] text-[#64748B] leading-relaxed">
+                    Your candidate profile can be linked directly to the Skill India Digital portal for batch registration.
+                  </p>
+                </div>
+
+                <div className="flex items-center justify-end gap-2.5 pt-3 border-t border-[#E2E8F0]">
+                  <Button variant="outline" size="sm" onClick={() => setEnrollModalCourse(null)}>
+                    Cancel
+                  </Button>
+                  <a
+                    href={enrollModalCourse.officialPortalUrl}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="inline-flex items-center gap-1.5 px-4 py-1.5 rounded-lg bg-[#4F46E5] hover:bg-[#4338CA] text-white font-medium text-[12px] h-8 transition-colors"
+                  >
+                    Confirm on Portal <ExternalLink className="h-3.5 w-3.5" />
+                  </a>
+                </div>
+              </div>
+            </div>
+          )}
+        </div>
+      </DashboardLayout>
+    );
 }

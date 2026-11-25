@@ -151,7 +151,8 @@ export async function GET(req) {
         });
 
         coursesWithRelevance.sort((a, b) => b.relevanceScore - a.relevanceScore);
-        return NextResponse.json({ courses: coursesWithRelevance });
+        const categories = [...new Set(coursesWithRelevance.map((c) => c.category).filter(Boolean))].sort();
+        return NextResponse.json({ courses: coursesWithRelevance, categories });
     } catch (error) {
         console.error("Courses fetch error:", error);
         return NextResponse.json({ error: "Failed to fetch courses" }, { status: 500 });

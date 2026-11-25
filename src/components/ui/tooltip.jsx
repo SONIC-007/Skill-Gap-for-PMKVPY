@@ -5,6 +5,6 @@ import { cn } from "@/lib/utils";
 const TooltipProvider = TooltipPrimitive.Provider;
 const Tooltip = TooltipPrimitive.Root;
 const TooltipTrigger = TooltipPrimitive.Trigger;
-const TooltipContent = React.forwardRef(({ className, sideOffset = 4, ...props }, ref) => (<TooltipPrimitive.Content ref={ref} sideOffset={sideOffset} className={cn("z-50 overflow-hidden rounded-md bg-blue-950 px-3 py-1.5 text-xs text-white animate-in fade-in-0 zoom-in-95", className)} {...props}/>));
+const TooltipContent = React.forwardRef(({ className, sideOffset = 4, ...props }, ref) => (<TooltipPrimitive.Content ref={ref} sideOffset={sideOffset} className={cn("z-50 overflow-hidden rounded-lg border border-[#1E293B] bg-[#0F172A] px-3 py-1.5 text-xs text-[#F8FAFC] shadow-md animate-in fade-in-0 zoom-in-95", className)} {...props}/>));
 TooltipContent.displayName = TooltipPrimitive.Content.displayName;
 export { Tooltip, TooltipTrigger, TooltipContent, TooltipProvider };

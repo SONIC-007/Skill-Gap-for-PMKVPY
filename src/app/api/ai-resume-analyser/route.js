@@ -1,9 +1,10 @@
 import { NextResponse } from "next/server";
+import dns from "node:dns/promises";
+import net from "node:net";
 import { prisma } from "@/lib/db";
 import { connectToDatabase } from "@/lib/mongoose";
 import JobRole from "@/models/JobRole";
 import TrainingCourse from "@/models/TrainingCourse";
-import { GoogleGenerativeAI } from "@google/generative-ai";
 
 // Standard National Occupational Standards (NOS) codes mapped to skills
 const SKILL_NOS_REGISTRY = {
@@ -111,6 +112,15 @@ const SKILL_KEYWORDS_MAP = {
     "Thermal Runaway Mitigation": ["thermal runaway", "thermal management", "cooling loop", "liquid cooling", "battery cooling", "heat sink"],
 };
 
+function findBoundedKeywordIndex(normalizedText, keyword) {
+    const clean = String(keyword || "").trim().toLowerCase();
+    if (!clean) return -1;
+    const escaped = clean.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    const regex = new RegExp(`(?:^|[^a-z0-9+])${escaped}(?:$|[^a-z0-9+])`, "i");
+    const match = regex.exec(normalizedText);
+    return match ? match.index : -1;
+}
+
 function extractSkillsFromText(text) {
     const normalized = text.toLowerCase();
     const results = [];
@@ -118,7 +128,7 @@ function extractSkillsFromText(text) {
         let matchCount = 0;
         let foundSnippet = "";
         for (const kw of keywords) {
-            const idx = normalized.indexOf(kw.toLowerCase());
+            const idx = findBoundedKeywordIndex(normalized, kw);
             if (idx !== -1) {
                 matchCount++;
                 if (!foundSnippet) {
@@ -147,7 +157,7 @@ function parseJobDescription(jdText) {
     const normalized = jdText.toLowerCase();
     for (const [skillName, keywords] of Object.entries(SKILL_KEYWORDS_MAP)) {
         for (const kw of keywords) {
-            if (normalized.includes(kw.toLowerCase())) {
+            if (findBoundedKeywordIndex(normalized, kw) !== -1) {
                 if (!detectedSkills.includes(skillName)) {
                     detectedSkills.push(skillName);
                 }
@@ -172,12 +182,299 @@ function parseJobDescription(jdText) {
     };
 }
 
-// Google Gemini AI SDK generative analysis
-async function analyzeWithGemini(resumeText, jobTitle, targetRequirements, jdText, apiKey) {
+function isPrivateOrReservedIp(ip) {
+    if (!ip) return true;
+    const normalized = ip.toLowerCase();
+    if (normalized === "::1" || normalized === "::" || normalized.startsWith("fe80:") || normalized.startsWith("fc") || normalized.startsWith("fd")) {
+        return true;
+    }
+    const ipv4Match = normalized.startsWith("::ffff:") ? normalized.slice(7) : normalized;
+    if (net.isIPv4(ipv4Match)) {
+        const parts = ipv4Match.split(".").map(Number);
+        const [a, b] = parts;
+        if (a === 0 || a === 10 || a === 127) return true;
+        if (a === 169 && b === 254) return true;
+        if (a === 172 && b >= 16 && b <= 31) return true;
+        if (a === 192 && b === 168) return true;
+        if (a === 100 && b >= 64 && b <= 127) return true;
+        return false;
+    }
+    return !net.isIPv6(normalized);
+}
+
+async function validatePublicHttpUrl(rawUrl) {
+    let parsed;
+    try {
+        parsed = new URL(rawUrl.trim());
+    } catch {
+        return { valid: false, reason: "invalid_url" };
+    }
+    if (parsed.protocol !== "http:" && parsed.protocol !== "https:") {
+        return { valid: false, reason: "unsupported_protocol" };
+    }
+    if (parsed.username || parsed.password) {
+        return { valid: false, reason: "credentials_disallowed" };
+    }
+    const host = parsed.hostname.toLowerCase();
+    if (host === "localhost" || host.endsWith(".local") || host.endsWith(".internal") || host.endsWith(".localhost")) {
+        return { valid: false, reason: "private_host" };
+    }
+    if (net.isIP(host)) {
+        if (isPrivateOrReservedIp(host)) {
+            return { valid: false, reason: "private_ip" };
+        }
+        return { valid: true, url: parsed.toString(), host };
+    }
+    try {
+        const resolved = await dns.lookup(host, { all: true });
+        if (!resolved.length || resolved.some((entry) => isPrivateOrReservedIp(entry.address))) {
+            return { valid: false, reason: "private_dns_target" };
+        }
+        return { valid: true, url: parsed.toString(), host };
+    } catch {
+        return { valid: false, reason: "dns_failed" };
+    }
+}
+
+function decodeHtmlEntities(text) {
+    return (text || "")
+        .replace(/&amp;/gi, "&")
+        .replace(/&lt;/gi, "<")
+        .replace(/&gt;/gi, ">")
+        .replace(/&quot;/gi, '"')
+        .replace(/&#39;/gi, "'")
+        .replace(/&nbsp;/gi, " ");
+}
+
+function stripHtmlTags(html) {
+    return decodeHtmlEntities(
+        (html || "")
+            .replace(/<script[\s\S]*?<\/script>/gi, " ")
+            .replace(/<style[\s\S]*?<\/style>/gi, " ")
+            .replace(/<noscript[\s\S]*?<\/noscript>/gi, " ")
+            .replace(/<svg[\s\S]*?<\/svg>/gi, " ")
+            .replace(/<[^>]+>/g, " ")
+    )
+        .replace(/\s+/g, " ")
+        .trim();
+}
+
+function extractJobTextFromHtml(html) {
+    const titleMatch = html.match(/<title[^>]*>([\s\S]*?)<\/title>/i);
+    const metaDescMatch =
+        html.match(/<meta[^>]+name=["']description["'][^>]+content=["']([^"']+)["']/i) ||
+        html.match(/<meta[^>]+content=["']([^"']+)["'][^>]+name=["']description["']/i) ||
+        html.match(/<meta[^>]+property=["']og:description["'][^>]+content=["']([^"']+)["']/i);
+    const ogTitleMatch = html.match(/<meta[^>]+property=["']og:title["'][^>]+content=["']([^"']+)["']/i);
+
+    let structuredJobText = "";
+    let structuredTitle = "";
+    const ldScripts = html.matchAll(/<script[^>]+type=["']application\/ld\+json["'][^>]*>([\s\S]*?)<\/script>/gi);
+    for (const match of ldScripts) {
+        try {
+            const parsed = JSON.parse(match[1].trim());
+            const items = Array.isArray(parsed) ? parsed : [parsed, ...(Array.isArray(parsed?.["@graph"]) ? parsed["@graph"] : [])];
+            for (const item of items) {
+                const t = item?.["@type"];
+                const isJob = t === "JobPosting" || (Array.isArray(t) && t.includes("JobPosting"));
+                if (isJob) {
+                    if (item.title && !structuredTitle) structuredTitle = String(item.title);
+                    const pieces = [
+                        item.title ? `Title: ${item.title}` : "",
+                        item.hiringOrganization?.name ? `Company: ${item.hiringOrganization.name}` : "",
+                        item.skills ? `Skills: ${Array.isArray(item.skills) ? item.skills.join(", ") : item.skills}` : "",
+                        item.qualifications ? `Qualifications: ${stripHtmlTags(String(item.qualifications))}` : "",
+                        item.description ? `Description: ${stripHtmlTags(String(item.description))}` : "",
+                    ].filter(Boolean);
+                    structuredJobText += pieces.join("\n") + "\n";
+                }
+            }
+        } catch {
+            // Ignore malformed JSON-LD blocks
+        }
+    }
+
+    const fetchedTitle = decodeHtmlEntities(structuredTitle || ogTitleMatch?.[1] || titleMatch?.[1] || "").trim();
+    const metaDesc = decodeHtmlEntities(metaDescMatch?.[1] || "").trim();
+    const bodyText = stripHtmlTags(html).slice(0, 3200);
+    const combined = [fetchedTitle, metaDesc, structuredJobText.trim(), bodyText]
+        .filter(Boolean)
+        .join("\n")
+        .slice(0, 4000);
+
+    const lower = combined.toLowerCase();
+    const looksGated =
+        lower.includes("authwall") ||
+        lower.includes("sign in to view") ||
+        lower.includes("join linkedin") ||
+        lower.includes("verify you are human") ||
+        lower.includes("enable javascript and cookies");
+
+    return {
+        fetchedTitle: fetchedTitle.slice(0, 140),
+        extractedText: combined,
+        looksGated,
+    };
+}
+
+async function fetchJobPostingFromUrl(rawUrl) {
+    if (!rawUrl || !rawUrl.trim()) {
+        return { fetchStatus: "none", fetchedTitle: "", extractedText: "", host: "" };
+    }
+
+    let currentUrl = rawUrl.trim();
+    for (let hop = 0; hop < 2; hop++) {
+        const check = await validatePublicHttpUrl(currentUrl);
+        if (!check.valid) {
+            return { fetchStatus: "unavailable", fetchedTitle: "", extractedText: "", host: "", reason: check.reason };
+        }
+        try {
+            const res = await fetch(check.url, {
+                method: "GET",
+                redirect: "manual",
+                signal: AbortSignal.timeout(2500),
+                headers: {
+                    "User-Agent": "Mozilla/5.0 (compatible; PMKVY-SkillGapAnalyser/1.0)",
+                    Accept: "text/html,application/xhtml+xml,text/plain;q=0.9",
+                },
+            });
+
+            if (res.status >= 300 && res.status < 400) {
+                const location = res.headers.get("location");
+                if (!location) break;
+                const nextUrl = new URL(location, check.url).toString();
+                if (nextUrl.toLowerCase().includes("authwall") || nextUrl.toLowerCase().includes("/login")) {
+                    return { fetchStatus: "gated", fetchedTitle: "", extractedText: "", host: check.host };
+                }
+                currentUrl = nextUrl;
+                continue;
+            }
+
+            if (res.status === 401 || res.status === 403 || res.status === 429 || res.status === 999) {
+                return { fetchStatus: "gated", fetchedTitle: "", extractedText: "", host: check.host };
+            }
+
+            if (!res.ok) {
+                return { fetchStatus: "unavailable", fetchedTitle: "", extractedText: "", host: check.host };
+            }
+
+            const reader = res.body?.getReader();
+            let rawHtml = "";
+            if (reader) {
+                const decoder = new TextDecoder();
+                let bytes = 0;
+                while (bytes < 250 * 1024) {
+                    const { done, value } = await reader.read();
+                    if (done) break;
+                    bytes += value.byteLength;
+                    rawHtml += decoder.decode(value, { stream: true });
+                }
+                reader.cancel().catch(() => {});
+            } else {
+                rawHtml = (await res.text()).slice(0, 250 * 1024);
+            }
+
+            const parsed = extractJobTextFromHtml(rawHtml);
+            if (parsed.looksGated || parsed.extractedText.length < 120) {
+                return {
+                    fetchStatus: "gated",
+                    fetchedTitle: parsed.fetchedTitle,
+                    extractedText: parsed.extractedText,
+                    host: check.host,
+                };
+            }
+
+            return {
+                fetchStatus: "fetched",
+                fetchedTitle: parsed.fetchedTitle,
+                extractedText: parsed.extractedText,
+                host: check.host,
+            };
+        } catch {
+            return { fetchStatus: "unavailable", fetchedTitle: "", extractedText: "", host: check.host };
+        }
+    }
+
+    return { fetchStatus: "gated", fetchedTitle: "", extractedText: "", host: "" };
+}
+
+const GEMINI_FLASH_MODELS = [
+    "gemini-3.5-flash-lite",
+    "gemini-3-flash-preview",
+    "gemini-3.1-flash-lite",
+    "gemma-4-31b-it",
+    "gemma-4-26b-a4b-it",
+    "gemini-3.8-flash",
+];
+
+function parseGeminiJson(rawText) {
+    if (!rawText || typeof rawText !== "string") return null;
+    const cleaned = rawText
+        .trim()
+        .replace(/^```(?:json)?\s*/i, "")
+        .replace(/\s*```$/, "")
+        .trim();
+    try {
+        return JSON.parse(cleaned);
+    } catch {
+        const start = cleaned.indexOf("{");
+        const end = cleaned.lastIndexOf("}");
+        if (start !== -1 && end > start) {
+            return JSON.parse(cleaned.slice(start, end + 1));
+        }
+        return null;
+    }
+}
+
+// Google Gemini AI generative analysis (bounded per-model timeouts across active Flash/Gemma models)
+async function analyzeWithGemini({
+    resumeText,
+    jobTitle,
+    targetRequirements,
+    jdText,
+    jobUrl,
+    isJobLinkMode,
+    apiKey,
+}) {
     const effectiveKey = apiKey || process.env.GEMINI_API_KEY;
     if (!effectiveKey) return null;
 
-    const prompt = `You are an expert AI Career and Skill Gap Evaluator aligned with India's PMKVY 4.0 and National Skills Qualifications Framework (NSQF).
+    const prompt = isJobLinkMode
+        ? `You are an expert AI Career and Skill Gap Evaluator aligned with India's PMKVY 4.0 and National Skills Qualifications Framework (NSQF).
+Evaluate the Candidate Resume against the Target Job Posting provided via URL and/or description.
+
+Target Job URL: ${jobUrl || "Not provided"}
+Target Job Context & Extracted Content:
+${(jdText || jobTitle || "General Industry Role").substring(0, 3800)}
+
+Candidate Resume:
+${resumeText.substring(0, 3500)}
+
+Instructions:
+1. Determine the specific role title ("targetJobTitle") and industry domain ("sectorCouncil") from the Job URL slug and Job Description/content.
+2. Extract the 6 to 8 most essential technical and workplace competencies required for this specific job.
+3. Grade the candidate strictly from evidence present in their resume (0 if not evidenced).
+4. Respond ONLY with a valid JSON object matching this schema (no markdown or commentary):
+{
+  "targetJobTitle": "string",
+  "sectorCouncil": "string (e.g. IT-ITeS / Data / Automotive / Cloud)",
+  "targetNSQF": "string (e.g. Industry Benchmark — NSQF Level 5 eq.)",
+  "matchPercentage": number (0 to 100),
+  "readinessGrade": "High Readiness" | "Moderate Readiness" | "Significant Gap",
+  "advisoryMessage": "string providing concise, actionable upskilling guidance",
+  "skills": [
+    {
+      "skillName": "string naming the required skill",
+      "nosCode": "string (matching NOS code if known or IND/SPEC)",
+      "requiredProficiency": number (60 to 95),
+      "importance": "Mandatory" | "Required" | "Preferred",
+      "candidateProficiency": number (0 to 100 based on resume evidence),
+      "status": "MATCHED" | "CRITICAL_GAP" | "ENHANCEMENT_NEEDED",
+      "resumeEvidence": "verbatim proof snippet or explicit gap explanation"
+    }
+  ]
+}`
+        : `You are an expert AI Career and Skill Gap Evaluator aligned with India's PMKVY 4.0 and National Skills Qualifications Framework (NSQF).
 Target Job: ${jobTitle}
 ${jdText ? `Target Job Description snippet: ${jdText.substring(0, 500)}` : ""}
 Required Skills to evaluate: ${JSON.stringify(targetRequirements.map((t) => t.skillName))}
@@ -186,7 +483,7 @@ Candidate Resume:
 ${resumeText.substring(0, 3500)}
 
 Analyze this candidate resume against the required statutory skills.
-Respond ONLY with a valid JSON object strictly matching this schema:
+Respond ONLY with a valid JSON object strictly matching this schema (no markdown or commentary):
 {
   "matchPercentage": number,
   "readinessGrade": "High Readiness" | "Moderate Readiness" | "Significant Gap",
@@ -201,49 +498,111 @@ Respond ONLY with a valid JSON object strictly matching this schema:
   ]
 }`;
 
-    try {
-        const genAI = new GoogleGenerativeAI(effectiveKey);
-        const model = genAI.getGenerativeModel({
-            model: "gemini-1.5-flash",
-            generationConfig: {
-                responseMimeType: "application/json",
-                temperature: 0.1,
-            },
-        });
+    const aiDeadline = Date.now() + 18000;
 
-        const result = await model.generateContent(prompt);
-        const text = result?.response?.text();
-        if (text) {
-            return JSON.parse(text);
-        }
-    } catch (sdkError) {
-        console.warn("[Gemini SDK Warning] Falling back to direct API endpoint:", sdkError.message);
+    for (const modelName of GEMINI_FLASH_MODELS) {
+        const remainingMs = aiDeadline - Date.now();
+        if (remainingMs < 1500) break;
+
+        const isGemma = modelName.startsWith("gemma");
+        const generationConfig = isGemma
+            ? { temperature: 0.1 }
+            : { temperature: 0.1, responseMimeType: "application/json" };
+
         try {
-            // Direct REST endpoint fallback
             const res = await fetch(
-                `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${effectiveKey}`,
+                `https://generativelanguage.googleapis.com/v1beta/models/${modelName}:generateContent?key=${effectiveKey}`,
                 {
                     method: "POST",
+                    signal: AbortSignal.timeout(Math.min(6000, remainingMs)),
                     headers: { "Content-Type": "application/json" },
                     body: JSON.stringify({
-                        contents: [{ parts: [{ text: prompt }] }],
-                        generationConfig: {
-                            temperature: 0.1,
-                            responseMimeType: "application/json",
-                        },
+                        contents: [{ role: "user", parts: [{ text: prompt }] }],
+                        generationConfig,
                     }),
                 }
             );
             if (res.ok) {
                 const data = await res.json();
                 const contentText = data?.candidates?.[0]?.content?.parts?.[0]?.text;
-                if (contentText) return JSON.parse(contentText);
+                const parsed = parseGeminiJson(contentText);
+                if (parsed) {
+                    return { ...parsed, _modelUsed: modelName };
+                }
+            } else {
+                console.warn(`[Gemini API ${res.status} - ${modelName}]`);
             }
-        } catch (restError) {
-            console.error("[Gemini REST Error]", restError);
+        } catch (err) {
+            console.warn(`[Gemini Timeout/Error - ${modelName}]`, err.message);
         }
     }
+
     return null;
+}
+
+export async function GET() {
+    let jobRoles = [];
+    try {
+        await connectToDatabase();
+        const mongoRoles = await JobRole.find()
+            .populate({
+                path: "skillRequirements",
+                populate: { path: "skill" },
+            })
+            .sort({ title: 1 })
+            .lean();
+
+        if (mongoRoles && mongoRoles.length > 0) {
+            jobRoles = mongoRoles.map((r) => ({
+                id: r._id.toString(),
+                title: r.title,
+                domain: r.domain,
+                description: r.description,
+                demandLevel: r.demandLevel,
+                skillRequirements: (r.skillRequirements || []).map((sr) => ({
+                    id: sr._id?.toString(),
+                    requiredProficiency: sr.requiredProficiency,
+                    importance: sr.importance,
+                    skill: sr.skill
+                        ? { id: sr.skill._id?.toString(), name: sr.skill.name }
+                        : null,
+                })),
+            }));
+        }
+    } catch {
+        // Fallback to Prisma
+    }
+
+    if (jobRoles.length === 0) {
+        try {
+            const prismaRoles = await prisma.jobRole.findMany({
+                include: {
+                    skillRequirements: { include: { skill: true } },
+                },
+                orderBy: { title: "asc" },
+            });
+            jobRoles = prismaRoles.map((r) => ({
+                id: r.id,
+                title: r.title,
+                domain: r.domain,
+                description: r.description,
+                demandLevel: r.demandLevel,
+                skillRequirements: (r.skillRequirements || []).map((sr) => ({
+                    id: sr.id,
+                    requiredProficiency: sr.requiredProficiency,
+                    importance: sr.importance,
+                    skill: sr.skill ? { id: sr.skill.id, name: sr.skill.name } : null,
+                })),
+            }));
+        } catch (err) {
+            console.warn("[AI Analyser GET roles error]", err.message);
+        }
+    }
+
+    return NextResponse.json({
+        jobRoles,
+        aiConfigured: Boolean(process.env.GEMINI_API_KEY),
+    });
 }
 
 export async function POST(req) {
@@ -290,17 +649,26 @@ export async function POST(req) {
                 // Ignore Mongo error and fallback to Prisma
             }
 
-            // B. Try Prisma SQLite if not found via Mongoose
-            if (!dbRole && jobRoleId) {
+            // B. Try Prisma if not found via Mongoose
+            if (!dbRole) {
                 try {
-                    dbRole = await prisma.jobRole.findUnique({
-                        where: { id: jobRoleId },
-                        include: {
-                            skillRequirements: {
-                                include: { skill: true },
-                            },
-                        },
-                    });
+                    if (jobRoleId) {
+                        dbRole = await prisma.jobRole.findUnique({
+                            where: { id: jobRoleId },
+                            include: { skillRequirements: { include: { skill: true } } },
+                        });
+                    }
+                    if (!dbRole) {
+                        dbRole = await prisma.jobRole.findFirst({
+                            where: domain ? { domain } : undefined,
+                            include: { skillRequirements: { include: { skill: true } } },
+                        });
+                    }
+                    if (!dbRole) {
+                        dbRole = await prisma.jobRole.findFirst({
+                            include: { skillRequirements: { include: { skill: true } } },
+                        });
+                    }
                 } catch {
                     // Ignore
                 }
@@ -328,13 +696,34 @@ export async function POST(req) {
             }
         }
 
-        // Fallback if targetMode is LINKEDIN or no requirements were resolved
-        if (targetRequirements.length === 0) {
-            const jdText = jobDescriptionText || (linkedinUrl ? `Target Job posting at: ${linkedinUrl}` : "");
-            const parsedJD = parseJobDescription(jdText);
-            targetJobTitle = parsedJD.title || "Industry Job Benchmark";
+        const isJobLinkFlow = targetMode === "LINKEDIN" || Boolean(linkedinUrl?.trim()) || (Boolean(jobDescriptionText?.trim()) && targetRequirements.length === 0);
+        let fetchedJob = { fetchStatus: "none", fetchedTitle: "", extractedText: "", host: "" };
+
+        if (linkedinUrl && linkedinUrl.trim()) {
+            const isLinkedInWithJd = linkedinUrl.toLowerCase().includes("linkedin.com") && (jobDescriptionText || "").trim().length > 80;
+            if (isLinkedInWithJd) {
+                fetchedJob = { fetchStatus: "gated", fetchedTitle: "", extractedText: "", host: "www.linkedin.com" };
+            } else {
+                fetchedJob = await fetchJobPostingFromUrl(linkedinUrl);
+            }
+        }
+
+        const rawTitleSource = (jobDescriptionText || "").trim() || fetchedJob.fetchedTitle || fetchedJob.extractedText || linkedinUrl || "";
+        const combinedJobContext = [
+            fetchedJob.fetchedTitle ? `Posting Title: ${fetchedJob.fetchedTitle}` : "",
+            jobDescriptionText ? `${jobDescriptionText}` : "",
+            fetchedJob.extractedText ? `Fetched Job Webpage Content:\n${fetchedJob.extractedText}` : "",
+            linkedinUrl ? `Job URL: ${linkedinUrl}` : "",
+        ]
+            .filter(Boolean)
+            .join("\n\n");
+
+        // Fallback / Job Link requirement resolution when not bound to a specific QP-NOS role
+        if (isJobLinkFlow || targetRequirements.length === 0) {
+            const parsedJD = parseJobDescription(rawTitleSource);
+            targetJobTitle = fetchedJob.fetchedTitle || parsedJD.title || "Industry Job Benchmark";
             targetJobCode = linkedinUrl
-                ? `Industry Benchmark (Source: ${linkedinUrl.includes("linkedin.com") ? "LinkedIn Talent Solutions" : "Indeed / Web"})`
+                ? `Job URL (${fetchedJob.host || (linkedinUrl.includes("linkedin.com") ? "LinkedIn" : "Web Posting")})`
                 : "Corporate Technical Specification";
             targetNSQF = "Industry Benchmark (NSQF Level 5-6 equivalent)";
             sectorCouncil = "Cross-Industry Technical Benchmark";
@@ -346,13 +735,21 @@ export async function POST(req) {
         }
 
         // 2. Run Google Gemini Generative AI Analysis (or fallback to Local NOS NLP)
-        const geminiResult = await analyzeWithGemini(
+        const geminiResult = await analyzeWithGemini({
             resumeText,
-            targetJobTitle,
+            jobTitle: targetJobTitle,
             targetRequirements,
-            jobDescriptionText || linkedinUrl,
-            apiKey
-        );
+            jdText: combinedJobContext || jobDescriptionText || linkedinUrl,
+            jobUrl: linkedinUrl,
+            isJobLinkMode: isJobLinkFlow,
+            apiKey,
+        });
+
+        if (isJobLinkFlow && geminiResult) {
+            if (geminiResult.targetJobTitle) targetJobTitle = geminiResult.targetJobTitle;
+            if (geminiResult.sectorCouncil) sectorCouncil = geminiResult.sectorCouncil;
+            if (geminiResult.targetNSQF) targetNSQF = geminiResult.targetNSQF;
+        }
 
         const candidateExtracted = extractSkillsFromText(resumeText);
         const candidateSkillMap = new Map(candidateExtracted.map((cs) => [cs.skillName, cs]));
@@ -364,11 +761,51 @@ export async function POST(req) {
         let totalScoreSum = 0;
         let totalRequiredSum = 0;
 
-        if (geminiResult && Array.isArray(geminiResult.skills)) {
-            const geminiSkillMap = new Map(geminiResult.skills.map((s) => [s.skillName, s]));
+        if (isJobLinkFlow && geminiResult && Array.isArray(geminiResult.skills) && geminiResult.skills.length > 0) {
+            for (const gSkill of geminiResult.skills) {
+                const skillName = gSkill?.skillName || "Required Competency";
+                const requiredLevel = typeof gSkill?.requiredProficiency === "number"
+                    ? Math.min(100, Math.max(50, gSkill.requiredProficiency))
+                    : 75;
+                const assessedLevel = typeof gSkill?.candidateProficiency === "number"
+                    ? Math.min(100, Math.max(0, gSkill.candidateProficiency))
+                    : 0;
+                const deficit = Math.max(0, requiredLevel - assessedLevel);
+
+                const status = assessedLevel >= requiredLevel ? "MATCHED" : assessedLevel > 0 ? "ENHANCEMENT_NEEDED" : "CRITICAL_GAP";
+                if (status === "MATCHED") matchedCount++;
+                else if (status === "ENHANCEMENT_NEEDED") enhancementCount++;
+                else criticalGapCount++;
+
+                totalScoreSum += Math.min(assessedLevel, requiredLevel);
+                totalRequiredSum += requiredLevel;
+
+                const nosMeta = SKILL_NOS_REGISTRY[skillName] || {
+                    nosCode: gSkill?.nosCode || "IND/SPEC",
+                    defaultImportance: "Required",
+                };
+
+                evaluatedSkills.push({
+                    skillName,
+                    nosCode: gSkill?.nosCode || nosMeta.nosCode,
+                    requiredProficiency: requiredLevel,
+                    candidateProficiency: assessedLevel,
+                    deficit,
+                    status,
+                    statusLabel: status === "MATCHED"
+                        ? "Verified Match"
+                        : status === "ENHANCEMENT_NEEDED"
+                            ? `Needs Work (-${deficit}%)`
+                            : `Critical Gap (-${deficit}%)`,
+                    importance: gSkill?.importance || nosMeta.defaultImportance,
+                    resumeEvidence: gSkill?.resumeEvidence || "No direct evidence found in candidate resume.",
+                });
+            }
+        } else if (geminiResult && Array.isArray(geminiResult.skills)) {
+            const geminiSkillMap = new Map(geminiResult.skills.map((s) => [String(s.skillName || "").toLowerCase(), s]));
 
             for (const req of targetRequirements) {
-                const geminiSkill = geminiSkillMap.get(req.skillName);
+                const geminiSkill = geminiSkillMap.get(String(req.skillName || "").toLowerCase());
                 const requiredLevel = req.requiredProficiency;
                 const assessedLevel = typeof geminiSkill?.candidateProficiency === "number"
                     ? Math.min(100, Math.max(0, geminiSkill.candidateProficiency))
@@ -525,7 +962,7 @@ export async function POST(req) {
         }
 
         const engineUsed = geminiResult
-            ? "Google Gemini 1.5 Flash (Generative AI)"
+            ? `Google Gemini AI (${geminiResult._modelUsed || "Flash"})`
             : "PMKVY National Occupational Standards Engine (Local)";
 
         const diagnostic = {
@@ -536,7 +973,14 @@ export async function POST(req) {
             targetNSQF,
             sectorCouncil,
             engineUsed,
+            geminiModel: geminiResult?._modelUsed || null,
             isGeminiPowered: Boolean(geminiResult),
+            jobSourceInfo: {
+                mode: targetMode,
+                url: linkedinUrl || null,
+                fetchStatus: fetchedJob.fetchStatus,
+                fetchedTitle: fetchedJob.fetchedTitle || null,
+            },
             summaryMetrics: {
                 totalEvaluated: evaluatedSkills.length,
                 matchedVerified: matchedCount,

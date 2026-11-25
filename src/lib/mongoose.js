@@ -9,7 +9,7 @@ const MONGODB_URI = process.env.MONGODB_URI || "mongodb://localhost:27017/pmkvy"
 let cached = global.mongooseCache;
 
 if (!cached) {
-    cached = global.mongooseCache = { conn: null, promise: null };
+    cached = global.mongooseCache = { conn: null, promise: null, lastFailedAt: 0 };
 }
 
 export async function connectToDatabase() {
@@ -17,16 +17,23 @@ export async function connectToDatabase() {
         return cached.conn;
     }
 
+    const isLocalUri = /mongodb:\/\/(localhost|127\.0\.0\.1|\[::1\])/i.test(MONGODB_URI);
+    if (isLocalUri && cached.lastFailedAt && Date.now() - cached.lastFailedAt < 15000) {
+        throw new Error("Local MongoDB unavailable (cooldown)");
+    }
+
     if (!cached.promise) {
         const opts = {
             bufferCommands: false,
-            serverSelectionTimeoutMS: 5000,
+            serverSelectionTimeoutMS: isLocalUri ? 1200 : 5000,
         };
 
         cached.promise = mongoose.connect(MONGODB_URI, opts).then((mongooseInstance) => {
+            cached.lastFailedAt = 0;
             console.log(`[MongoDB] Connected successfully to ${MONGODB_URI.replace(/\/\/.*@/, "//***@")}`);
             return mongooseInstance;
         }).catch((err) => {
+            cached.lastFailedAt = Date.now();
             console.warn(`[MongoDB] Connection warning (${err.message}). Check MONGODB_URI in .env.`);
             cached.promise = null;
             throw err;

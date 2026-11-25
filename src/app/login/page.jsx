@@ -6,8 +6,8 @@ import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
-import { GraduationCap, Mail, Lock, Loader2, ArrowRight, Sparkles } from "lucide-react";
+import { Mail, Lock, Loader2, ArrowRight, Sparkles, Zap, ShieldCheck } from "lucide-react";
+
 function LoginForm() {
     const router = useRouter();
     const searchParams = useSearchParams();
@@ -16,6 +16,7 @@ function LoginForm() {
     const [password, setPassword] = useState("");
     const [error, setError] = useState("");
     const [loading, setLoading] = useState(false);
+
     const handleSubmit = async (e) => {
         e.preventDefault();
         setError("");
@@ -27,111 +28,200 @@ function LoginForm() {
                 redirect: false,
             });
             if (result?.error) {
-                setError("Invalid email or password");
-            }
-            else {
+                setError("Invalid email or password. Use the Demo buttons below for instant access.");
+            } else {
                 router.push(callbackUrl);
                 router.refresh();
             }
-        }
-        catch {
+        } catch {
             setError("Something went wrong. Please try again.");
-        }
-        finally {
+        } finally {
             setLoading(false);
         }
     };
-    return (<Card className="w-full max-w-[420px] rounded-3xl border border-[#e5e7eb] bg-white p-2 sm:p-4 shadow-[0_4px_24px_rgba(0,0,0,0.04)]">
-      <CardHeader className="text-center pb-5 pt-4">
-        <div className="flex justify-center mb-4">
-          <div className="flex items-center justify-center w-12 h-12 rounded-full bg-[#0071e3] text-white">
-            <GraduationCap className="h-6 w-6"/>
-          </div>
+
+    const quickLoginDemo = async (demoEmail, demoPassword, targetUrl) => {
+        setEmail(demoEmail);
+        setPassword(demoPassword);
+        setError("");
+        setLoading(true);
+        try {
+            const result = await signIn("credentials", {
+                email: demoEmail,
+                password: demoPassword,
+                redirect: false,
+            });
+            if (!result?.error) {
+                router.push(targetUrl || callbackUrl);
+                router.refresh();
+            } else {
+                setError("Demo credentials check failed.");
+            }
+        } catch {
+            setError("Sign in failed. Please try again.");
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    return (
+        <div className="w-full max-w-[440px] bg-white border border-[#E2E8F0] rounded-xl shadow-[0_4px_16px_-2px_rgba(15,23,42,0.06)] relative overflow-hidden">
+            <div className="h-1 w-full bg-gradient-to-r from-[#3525CD] via-[#4D44E3] to-[#10B981]" />
+
+            <div className="p-7 sm:p-8">
+                <div className="text-center mb-6">
+                    <div className="inline-flex h-11 w-11 rounded-xl bg-[#EAEDFF] text-[#3525CD] border border-[#C7C4D8]/60 items-center justify-center font-mono text-[16px] font-bold mb-3">
+                        &lt;/&gt;
+                    </div>
+                    <h1 className="font-display text-[22px] font-semibold text-[#0F172A] tracking-tight">
+                        Welcome Back
+                    </h1>
+                    <p className="text-[13px] text-[#64748B] mt-1 max-w-xs mx-auto">
+                        Sign in to PMKVY Skill Gap Analyser for AI resume audits, gap diagnostics, and training tracks.
+                    </p>
+
+                    {callbackUrl && callbackUrl !== "/dashboard" && (
+                        <div className="mt-3.5 px-3 py-2 rounded-lg bg-[#F2F3FF] border border-[#C7C4D8] text-[#3525CD] text-[12px] font-medium inline-flex items-center gap-1.5">
+                            <Sparkles className="h-3.5 w-3.5 shrink-0" />
+                            <span>
+                                Continue to <strong className="font-mono">{callbackUrl}</strong>
+                            </span>
+                        </div>
+                    )}
+                </div>
+
+                {error && (
+                    <div className="mb-4 p-3 text-[12px] text-[#991B1B] bg-[#FEF2F2] border border-[#FECACA] rounded-lg font-medium">
+                        {error}
+                    </div>
+                )}
+
+                <form onSubmit={handleSubmit} className="space-y-4">
+                    <div className="space-y-1.5">
+                        <div className="flex items-center justify-between">
+                            <Label htmlFor="email">Candidate / Admin Email</Label>
+                            <span className="font-mono text-[11px] text-[#64748B]">candidate@pmkvy.com</span>
+                        </div>
+                        <div className="relative">
+                            <Mail className="absolute left-3 top-2.5 h-4 w-4 text-[#64748B]" />
+                            <Input
+                                id="email"
+                                type="email"
+                                placeholder="name@example.com"
+                                className="pl-9"
+                                value={email}
+                                onChange={(e) => setEmail(e.target.value)}
+                                required
+                            />
+                        </div>
+                    </div>
+
+                    <div className="space-y-1.5">
+                        <div className="flex items-center justify-between">
+                            <Label htmlFor="password">Password</Label>
+                            <Link href="/forgot-password" className="text-[12px] text-[#4F46E5] hover:underline font-medium">
+                                Forgot passcode?
+                            </Link>
+                        </div>
+                        <div className="relative">
+                            <Lock className="absolute left-3 top-2.5 h-4 w-4 text-[#64748B]" />
+                            <Input
+                                id="password"
+                                type="password"
+                                placeholder="••••••••"
+                                className="pl-9"
+                                value={password}
+                                onChange={(e) => setPassword(e.target.value)}
+                                required
+                            />
+                        </div>
+                    </div>
+
+                    <div className="flex items-center justify-between pt-0.5 text-[12px]">
+                        <span className="text-[#64748B]">Session stored via NextAuth JWT</span>
+                        <span className="font-mono text-[11px] text-[#065F46] flex items-center gap-1">
+                            <ShieldCheck className="h-3.5 w-3.5 text-[#10B981]" /> Encrypted
+                        </span>
+                    </div>
+
+                    <Button type="submit" className="w-full h-10 text-[14px]" disabled={loading}>
+                        {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : <ArrowRight className="h-4 w-4" />}
+                        <span>Sign In to Workspace</span>
+                    </Button>
+                </form>
+
+                {/* 1-Click Demo Evaluator Access */}
+                <div className="mt-6 pt-5 border-t border-[#E2E8F0] space-y-2.5">
+                    <div className="flex items-center justify-between">
+                        <span className="font-mono text-[11px] uppercase tracking-wider text-[#64748B] font-semibold">
+                            Quick Demo Sign-In
+                        </span>
+                        <span className="font-mono text-[10px] text-[#4F46E5] bg-[#EAEDFF] px-1.5 py-0.5 rounded">
+                            1-CLICK
+                        </span>
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-2">
+                        <Button
+                            type="button"
+                            variant="secondary"
+                            size="sm"
+                            disabled={loading}
+                            onClick={() => quickLoginDemo("candidate@pmkvy.com", "candidate123")}
+                            className="h-9 bg-[#F2F3FF] hover:bg-[#EAEDFF] text-[#3525CD] border-[#C7C4D8]/80"
+                        >
+                            <Zap className="h-3.5 w-3.5" />
+                            <span>Candidate Demo</span>
+                        </Button>
+                        <Button
+                            type="button"
+                            variant="outline"
+                            size="sm"
+                            disabled={loading}
+                            onClick={() => quickLoginDemo("admin@pmkvy.com", "admin123", "/admin")}
+                            className="h-9"
+                        >
+                            <span>Admin Demo</span>
+                        </Button>
+                    </div>
+
+                    <p className="text-[12px] text-[#64748B] text-center pt-2">
+                        New to PMKVY Skill Gap Analyser?{" "}
+                        <Link href="/register" className="text-[#4F46E5] font-medium hover:underline">
+                            Create candidate account
+                        </Link>
+                    </p>
+                </div>
+            </div>
         </div>
-        <CardTitle className="text-[26px] font-semibold text-[#1d1d1f] tracking-tight">
-          Sign In
-        </CardTitle>
-        <CardDescription className="text-[14px] text-[#86868b] mt-1">
-          Access your PMKVY skill profile and AI analysis
-        </CardDescription>
-
-        {/* Notice if redirected from an internal page */}
-        {callbackUrl && callbackUrl !== "/dashboard" && (<div className="mt-4 p-2.5 rounded-xl bg-[#0071e3]/5 border border-[#0071e3]/20 text-[#0071e3] text-[13px] font-medium flex items-center justify-center gap-1.5">
-            <Sparkles className="h-3.5 w-3.5"/>
-            <span>
-              Sign in to continue to <strong>{callbackUrl.replace("/", "").replace("-", " ")}</strong>
-            </span>
-          </div>)}
-      </CardHeader>
-
-      <form onSubmit={handleSubmit}>
-        <CardContent className="space-y-4 px-6">
-          {error && (<div className="p-3 text-[13px] text-[#ff3b30] bg-[#ff3b30]/10 border border-[#ff3b30]/20 rounded-xl font-medium">
-              {error}
-            </div>)}
-
-          <div className="space-y-1.5">
-            <Label htmlFor="email" className="text-[13px] font-medium text-[#1d1d1f]">
-              Email
-            </Label>
-            <div className="relative">
-              <Mail className="absolute left-3.5 top-3 h-4 w-4 text-[#86868b]"/>
-              <Input id="email" type="email" placeholder="name@example.com" className="pl-10 text-[14px] rounded-xl h-[42px]" value={email} onChange={(e) => setEmail(e.target.value)} required/>
-            </div>
-          </div>
-
-          <div className="space-y-1.5">
-            <div className="flex items-center justify-between">
-              <Label htmlFor="password" className="text-[13px] font-medium text-[#1d1d1f]">
-                Password
-              </Label>
-              <Link href="/forgot-password" className="text-[12px] text-[#0071e3] hover:underline">
-                Forgot password?
-              </Link>
-            </div>
-            <div className="relative">
-              <Lock className="absolute left-3.5 top-3 h-4 w-4 text-[#86868b]"/>
-              <Input id="password" type="password" placeholder="••••••••" className="pl-10 text-[14px] rounded-xl h-[42px]" value={password} onChange={(e) => setPassword(e.target.value)} required/>
-            </div>
-          </div>
-        </CardContent>
-
-        <CardFooter className="flex flex-col gap-3.5 pt-3 px-6 pb-6">
-          {/* 1-Click Fast Credentials for Evaluation */}
-          <div className="flex gap-2 w-full">
-            <Button type="button" variant="outline" size="sm" className="flex-1 text-[12px] rounded-full h-[36px] border-[#d2d2d7] text-[#1d1d1f] hover:bg-[#f5f5f7]" onClick={() => {
-            setEmail("candidate@pmkvy.com");
-            setPassword("candidate123");
-        }}>
-              Candidate Demo
-            </Button>
-            <Button type="button" variant="outline" size="sm" className="flex-1 text-[12px] rounded-full h-[36px] border-[#d2d2d7] text-[#1d1d1f] hover:bg-[#f5f5f7]" onClick={() => {
-            setEmail("admin@pmkvy.com");
-            setPassword("admin123");
-        }}>
-              Admin Demo
-            </Button>
-          </div>
-
-          <Button type="submit" className="w-full bg-[#0071e3] hover:bg-[#0077ed] text-white font-medium text-[15px] rounded-full h-[44px] shadow-none" disabled={loading}>
-            {loading ? <Loader2 className="h-4 w-4 animate-spin mr-2"/> : <ArrowRight className="h-4 w-4 mr-1.5"/>}
-            Continue
-          </Button>
-
-          <p className="text-[13px] text-[#86868b] text-center pt-2">
-            Don&apos;t have an account?{" "}
-            <Link href="/register" className="text-[#0071e3] font-medium hover:underline">
-              Create yours now
-            </Link>
-          </p>
-        </CardFooter>
-      </form>
-    </Card>);
+    );
 }
+
 export default function LoginPage() {
-    return (<div className="min-h-screen flex items-center justify-center bg-[#f5f5f7] px-4 py-12">
-      <Suspense fallback={<div className="text-[13px] text-[#86868b]">Loading sign in...</div>}>
-        <LoginForm />
-      </Suspense>
-    </div>);
+    return (
+        <div className="min-h-screen flex flex-col bg-[#F8FAFC] text-[#0F172A]">
+            <header className="w-full bg-white border-b border-[#E2E8F0]">
+                <div className="max-w-7xl mx-auto px-4 sm:px-6 h-14 flex items-center justify-between">
+                    <Link href="/" className="flex items-center gap-2">
+                        <span className="h-7 w-7 rounded-lg bg-[#4F46E5] text-white flex items-center justify-center font-mono text-[12px] font-bold">
+                            &lt;/&gt;
+                        </span>
+                        <span className="font-display text-[15px] font-semibold text-[#3525CD]">PMKVY Skill Gap</span>
+                        <span className="font-mono text-[10px] px-1.5 py-0.5 rounded-full bg-[#EAEDFF] text-[#464555]">
+                            PMKVY 4.0
+                        </span>
+                    </Link>
+                    <Link href="/" className="text-[12px] font-medium text-[#64748B] hover:text-[#4F46E5]">
+                        ← Back to Overview
+                    </Link>
+                </div>
+            </header>
+
+            <main className="flex-1 flex items-center justify-center px-4 py-10">
+                <Suspense fallback={<div className="text-[13px] font-mono text-[#64748B]">Loading authentication...</div>}>
+                    <LoginForm />
+                </Suspense>
+            </main>
+        </div>
+    );
 }

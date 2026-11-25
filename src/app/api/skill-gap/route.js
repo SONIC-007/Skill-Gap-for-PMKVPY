@@ -96,6 +96,7 @@ export async function GET(req) {
                             .lean();
                         assessments = mAssessments.map((a) => ({
                             id: a._id.toString(),
+                            jobRoleId: a.jobRoleId?.toString() || a.jobRole?._id?.toString(),
                             score: a.score,
                             skillGap: a.skillGap,
                             completedAt: a.completedAt,
@@ -167,26 +168,36 @@ export async function GET(req) {
                 (c) => c.skill?.name === req.skill?.name || c.skillId === req.skill?.id
             );
             const currentProficiency = cs?.proficiency || 0;
-            const gap = Math.max(0, req.requiredProficiency - currentProficiency);
+            const required = req.requiredProficiency || 70;
+            const gapPercent = required > 0
+                ? Math.max(0, Math.round(((required - currentProficiency) / required) * 100))
+                : 0;
+            const uiStatus = gapPercent <= 10 ? "met" : gapPercent <= 50 ? "improvement" : "missing";
             return {
                 skillId: req.skill?.id,
                 skillName: req.skill?.name || "Skill",
+                category: req.skill?.category || "TECHNICAL",
                 domain: req.skill?.domain,
-                requiredProficiency: req.requiredProficiency,
+                requiredProficiency: required,
+                candidateProficiency: currentProficiency,
                 currentProficiency,
-                gap,
-                importance: req.importance,
-                status: gap === 0 ? "MET" : gap <= 20 ? "MODERATE_GAP" : "CRITICAL_GAP",
+                gap: gapPercent,
+                importance: req.importance || "Required",
+                status: uiStatus,
+                gapStatus: gapPercent <= 10 ? "MET" : gapPercent <= 50 ? "MODERATE_GAP" : "CRITICAL_GAP",
             };
         });
 
         const totalRequired = skillGapResults.reduce((acc, curr) => acc + curr.requiredProficiency, 0);
         const totalCurrent = skillGapResults.reduce((acc, curr) => acc + Math.min(curr.currentProficiency, curr.requiredProficiency), 0);
         const overallMatchPercentage = totalRequired > 0 ? Math.round((totalCurrent / totalRequired) * 100) : 0;
+        const overallGap = Math.max(0, 100 - overallMatchPercentage);
 
         return NextResponse.json({
             jobRole: selectedRole,
+            skills: skillGapResults,
             skillGapResults,
+            overallGap,
             overallMatchPercentage,
             jobRoles,
         });
