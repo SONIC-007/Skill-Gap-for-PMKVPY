@@ -104,11 +104,43 @@ router.put("/", requireAuth, async (req, res) => {
         if (!enrollmentId || !mongoose.Types.ObjectId.isValid(enrollmentId)) {
             return res.status(400).json({ error: "Valid Enrollment ID is required" });
         }
+        if (!mongoose.Types.ObjectId.isValid(userId)) {
+            return res.status(400).json({ error: "Invalid user ID" });
+        }
 
+        const existingEnrollment = await CourseEnrollment.findOne({ _id: enrollmentId, userId }).lean();
+        if (!existingEnrollment) {
+            return res.status(404).json({ error: "Enrollment not found" });
+        }
+
+        const VALID_STATUSES = ["ENROLLED", "IN_PROGRESS", "COMPLETED"];
         const updateFields = {};
-        if (progress !== undefined) updateFields.progress = progress;
-        if (status) updateFields.status = status;
-        if (status === "COMPLETED") updateFields.completedAt = new Date();
+
+        if (progress !== undefined) {
+            const numericProgress = Number(progress);
+            if (!Number.isFinite(numericProgress) || numericProgress < 0 || numericProgress > 100) {
+                return res.status(400).json({ error: "Progress must be a number between 0 and 100" });
+            }
+            updateFields.progress = Math.round(numericProgress);
+        }
+
+        if (status !== undefined) {
+            const cleanStatus = String(status).trim().toUpperCase();
+            if (!VALID_STATUSES.includes(cleanStatus)) {
+                return res.status(400).json({ error: "Invalid enrollment status" });
+            }
+            updateFields.status = cleanStatus;
+        }
+
+        if (updateFields.progress === 100 && !updateFields.status) {
+            updateFields.status = "COMPLETED";
+        }
+        if (updateFields.status === "COMPLETED") {
+            updateFields.progress = 100;
+            if (!existingEnrollment.completedAt) {
+                updateFields.completedAt = new Date();
+            }
+        }
 
         const enrollment = await CourseEnrollment.findOneAndUpdate(
             { _id: enrollmentId, userId },
@@ -116,12 +148,13 @@ router.put("/", requireAuth, async (req, res) => {
             { new: true }
         ).lean();
 
-        if (!enrollment) {
-            return res.status(404).json({ error: "Enrollment not found" });
-        }
+        // Boost related candidate skills only on first transition into COMPLETED
+        const newlyCompleted =
+            updateFields.status === "COMPLETED" &&
+            existingEnrollment.status !== "COMPLETED" &&
+            enrollment?.courseId;
 
-        // Boost related candidate skills when course is completed
-        if (status === "COMPLETED" && enrollment.courseId) {
+        if (newlyCompleted) {
             const linkedSkills = await CourseSkill.find({ courseId: enrollment.courseId })
                 .populate("skill")
                 .lean();

@@ -3,7 +3,9 @@
 import { useState, useEffect } from "react";
 import Link from "next/link";
 import { apiFetch } from "@/lib/api";
+import { useSession } from "@/lib/auth-context";
 import { DashboardLayout } from "@/components/layout/dashboard-layout";
+import { EditorialPageHeader } from "@/components/story/EditorialPageHeader";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -14,9 +16,7 @@ import {
   Mail,
   Phone,
   MapPin,
-  GraduationCap,
   Briefcase,
-  Target,
   CheckCircle2,
   AlertCircle,
   Save,
@@ -25,6 +25,7 @@ import {
 } from "lucide-react";
 
 export default function ProfilePage() {
+  const { refreshSession } = useSession();
   const [formData, setFormData] = useState({
     name: "",
     email: "",
@@ -94,6 +95,7 @@ export default function ProfilePage() {
 
       if (res.ok) {
         setSavedSuccess(true);
+        refreshSession().catch(() => {});
       } else {
         const data = await res.json().catch(() => ({}));
         setErrorMsg(data.error || "Failed to update profile details.");
@@ -116,28 +118,19 @@ export default function ProfilePage() {
   return (
     <DashboardLayout>
       <div className="space-y-6">
-        {/* Page Header */}
-        <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between border-b border-[#E2E8F0] pb-5">
-          <div>
-            <div className="flex items-center gap-2 font-mono text-[11px] font-semibold uppercase tracking-[0.06em] text-[#64748B]">
-              <span>ACCOUNT</span>
-              <span>/</span>
-              <span className="text-[#4F46E5]">CANDIDATE DOSSIER</span>
-            </div>
-            <h1 className="mt-1.5 font-display text-2xl sm:text-[28px] font-bold tracking-[-0.025em] text-[#0F172A]">
-              Profile &amp; Career Preferences
-            </h1>
-            <p className="mt-1 text-[14px] text-[#475569]">
-              Maintain your academic background and PMKVY target role so career readiness rankings stay accurate.
-            </p>
-          </div>
-
-          <div className="flex items-center gap-2">
-            <Badge className="border border-[#C7C4D8] bg-[#F2F3FF] font-mono text-[11px] font-semibold text-[#3525CD]">
+        {/* Editorial Header */}
+        <EditorialPageHeader
+          variant="light"
+          eyebrow="ACCOUNT / CANDIDATE DOSSIER"
+          title="Profile & Career"
+          italicAccent="Preferences."
+          description="Maintain your academic background and PMKVY target role so career readiness rankings stay accurate."
+          rightSlot={
+            <Badge variant="secondary" className="font-mono text-[11px] px-3 py-1">
               ROLE: {formData.role || "CANDIDATE"}
             </Badge>
-          </div>
-        </div>
+          }
+        />
 
         {/* Status Alerts */}
         {savedSuccess && (
@@ -159,84 +152,75 @@ export default function ProfilePage() {
         {loading ? (
           <div className="grid grid-cols-1 gap-6 lg:grid-cols-12">
             <div className="lg:col-span-4 prepp-card p-6 animate-pulse space-y-4">
-              <div className="h-16 w-16 rounded-xl bg-[#E2E8F0]" />
-              <div className="h-5 w-1/2 rounded bg-[#E2E8F0]" />
-              <div className="h-4 w-3/4 rounded bg-[#F1F5F9]" />
+              <div className="h-16 w-16 rounded-xl bg-[#E6E4DE]" />
+              <div className="h-5 w-1/2 rounded bg-[#E6E4DE]" />
+              <div className="h-4 w-3/4 rounded bg-[#EFECE6]" />
             </div>
             <div className="lg:col-span-8 prepp-card p-6 animate-pulse space-y-4">
-              <div className="h-6 w-1/3 rounded bg-[#E2E8F0]" />
-              <div className="h-10 w-full rounded bg-[#F1F5F9]" />
-              <div className="h-10 w-full rounded bg-[#F1F5F9]" />
-              <div className="h-24 w-full rounded bg-[#F1F5F9]" />
+              <div className="h-6 w-1/3 rounded bg-[#E6E4DE]" />
+              <div className="h-10 w-full rounded bg-[#EFECE6]" />
+              <div className="h-10 w-full rounded bg-[#EFECE6]" />
+              <div className="h-24 w-full rounded bg-[#EFECE6]" />
             </div>
           </div>
         ) : (
           <div className="grid grid-cols-1 gap-6 lg:grid-cols-12 lg:items-start">
-            {/* Left Dossier Summary Card */}
+            {/* Left Dossier Summary Card (Ref 2 Modular Profile Card) */}
             <div className="lg:col-span-4 space-y-5">
-              <div className="prepp-card overflow-hidden">
-                <div className="h-1 w-full bg-gradient-to-r from-[#3525CD] via-[#4F46E5] to-[#10B981]" />
-                <div className="p-6">
-                  <div className="flex items-center gap-3.5">
-                    <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-xl border border-[#C7C4D8] bg-[#F2F3FF] font-display text-xl font-bold text-[#3525CD]">
-                      {initials || "U"}
+              <div className="prepp-card p-6 space-y-5">
+                <div className="flex items-center gap-4">
+                  <div className="flex h-16 w-16 shrink-0 items-center justify-center rounded-2xl bg-[#EEF0FF] font-display text-xl font-bold text-[#4F46E5]">
+                    {initials || "U"}
+                  </div>
+                  <div className="min-w-0">
+                    <div className="font-mono text-[10.5px] font-semibold uppercase tracking-wider text-[#71717A]">
+                      {formData.role || "CANDIDATE"}
                     </div>
-                    <div className="min-w-0">
-                      <h2 className="font-display text-lg font-bold text-[#0F172A] truncate">
-                        {formData.name || "Candidate"}
-                      </h2>
-                      <div className="font-mono text-[12px] text-[#64748B] truncate">
-                        {formData.email}
-                      </div>
+                    <h2 className="font-display text-lg font-bold text-[#111113] truncate">
+                      {formData.name || "Candidate"}
+                    </h2>
+                    <div className="text-[12px] text-[#71717A] truncate">
+                      {formData.email}
                     </div>
                   </div>
+                </div>
 
-                  <div className="mt-5 space-y-3 border-t border-[#E2E8F0] pt-4 text-[13px]">
-                    <div className="flex items-center justify-between gap-2">
-                      <span className="flex items-center gap-2 text-[#64748B]">
-                        <MapPin className="h-3.5 w-3.5" />
-                        Location
-                      </span>
-                      <span className="font-medium text-[#0F172A] truncate max-w-[170px]">
-                        {formData.location || "Not specified"}
-                      </span>
-                    </div>
-
-                    <div className="flex items-center justify-between gap-2">
-                      <span className="flex items-center gap-2 text-[#64748B]">
-                        <GraduationCap className="h-3.5 w-3.5" />
-                        Education
-                      </span>
-                      <span className="font-medium text-[#0F172A] truncate max-w-[170px]">
-                        {formData.education || "Not specified"}
-                      </span>
-                    </div>
-
-                    <div className="flex items-center justify-between gap-2">
-                      <span className="flex items-center gap-2 text-[#64748B]">
-                        <Target className="h-3.5 w-3.5" />
-                        Target Role
-                      </span>
-                      <span className="font-mono text-[12px] font-semibold text-[#4F46E5] truncate max-w-[170px]">
-                        {formData.targetJobRole || "Unassigned"}
-                      </span>
+                {/* Inner Soft Tinted 3-Stat Strip (Matching Ref 2 Stats Block) */}
+                <div className="grid grid-cols-3 gap-2 rounded-2xl bg-[#F4F5F7] p-3.5 text-center">
+                  <div className="min-w-0">
+                    <div className="text-[10.5px] text-[#71717A]">Location</div>
+                    <div className="font-display text-[13px] font-semibold text-[#111113] truncate mt-0.5">
+                      {formData.location || "India"}
                     </div>
                   </div>
-
-                  <div className="mt-5 space-y-2 border-t border-[#E2E8F0] pt-4">
-                    <Link href="/resume-analyser" className="block">
-                      <Button variant="outline" size="sm" className="w-full justify-start">
-                        <FileSearch className="mr-2 h-3.5 w-3.5 text-[#4F46E5]" />
-                        Run AI Resume Analyser
-                      </Button>
-                    </Link>
-                    <Link href="/assessment" className="block">
-                      <Button variant="outline" size="sm" className="w-full justify-start">
-                        <Sparkles className="mr-2 h-3.5 w-3.5 text-[#10B981]" />
-                        Take NSQF Assessment
-                      </Button>
-                    </Link>
+                  <div className="min-w-0 border-x border-black/[0.06] px-1">
+                    <div className="text-[10.5px] text-[#71717A]">Education</div>
+                    <div className="font-display text-[13px] font-semibold text-[#111113] truncate mt-0.5">
+                      {formData.education || "Unset"}
+                    </div>
                   </div>
+                  <div className="min-w-0">
+                    <div className="text-[10.5px] text-[#71717A]">Target</div>
+                    <div className="font-display text-[13px] font-semibold text-[#4F46E5] truncate mt-0.5">
+                      {formData.targetJobRole || "Unset"}
+                    </div>
+                  </div>
+                </div>
+
+                {/* Dual Action Buttons (Secondary White + Solid Black/Indigo CTA) */}
+                <div className="grid grid-cols-2 gap-2.5">
+                  <Link href="/assessment" className="block">
+                    <Button variant="outline" size="sm" className="w-full justify-center rounded-xl h-9">
+                      <Sparkles className="mr-1.5 h-3.5 w-3.5 text-[#10B981]" />
+                      NSQF Quiz
+                    </Button>
+                  </Link>
+                  <Link href="/resume-analyser" className="block">
+                    <Button variant="default" size="sm" className="w-full justify-center rounded-xl h-9">
+                      <FileSearch className="mr-1.5 h-3.5 w-3.5" />
+                      Resume AI
+                    </Button>
+                  </Link>
                 </div>
               </div>
             </div>
@@ -245,9 +229,9 @@ export default function ProfilePage() {
             <form onSubmit={handleSubmit} className="lg:col-span-8 space-y-5">
               {/* Section 1: Identity */}
               <div className="prepp-card p-6">
-                <div className="flex items-center gap-2 border-b border-[#E2E8F0] pb-3.5">
+                <div className="flex items-center gap-2 border-b border-[#E6E4DE] pb-3.5">
                   <User className="h-4 w-4 text-[#4F46E5]" />
-                  <h3 className="font-display text-[16px] font-bold text-[#0F172A]">
+                  <h3 className="font-display text-[16px] font-bold text-[#111113]">
                     Identity &amp; Contact
                   </h3>
                 </div>
@@ -267,7 +251,7 @@ export default function ProfilePage() {
                   <div className="space-y-1.5">
                     <Label htmlFor="email">
                       Email Address{" "}
-                      <span className="font-mono text-[10px] text-[#64748B]">
+                      <span className="font-mono text-[10px] text-[#52525B]">
                         (READ-ONLY)
                       </span>
                     </Label>
@@ -277,7 +261,7 @@ export default function ProfilePage() {
                         id="email"
                         value={formData.email}
                         disabled
-                        className="pl-9 bg-[#F8FAFC] font-mono text-[13px] text-[#64748B]"
+                        className="pl-9 bg-[#F6F5F0] font-mono text-[13px] text-[#52525B]"
                       />
                     </div>
                   </div>
@@ -314,9 +298,9 @@ export default function ProfilePage() {
 
               {/* Section 2: Academic & Experience */}
               <div className="prepp-card p-6">
-                <div className="flex items-center gap-2 border-b border-[#E2E8F0] pb-3.5">
+                <div className="flex items-center gap-2 border-b border-[#E6E4DE] pb-3.5">
                   <Briefcase className="h-4 w-4 text-[#4F46E5]" />
-                  <h3 className="font-display text-[16px] font-bold text-[#0F172A]">
+                  <h3 className="font-display text-[16px] font-bold text-[#111113]">
                     Academic &amp; Professional Background
                   </h3>
                 </div>
@@ -376,7 +360,7 @@ export default function ProfilePage() {
                   />
                 </div>
 
-                <div className="mt-6 flex items-center justify-end gap-3 border-t border-[#E2E8F0] pt-4">
+                <div className="mt-6 flex items-center justify-end gap-3 border-t border-[#E6E4DE] pt-4">
                   <Button type="submit" disabled={saving}>
                     <Save className="mr-1.5 h-3.5 w-3.5" />
                     {saving ? "Saving Changes..." : "Save Candidate Profile"}

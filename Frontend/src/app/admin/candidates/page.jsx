@@ -4,6 +4,7 @@ import { useState, useEffect } from "react";
 import Link from "next/link";
 import { apiFetch } from "@/lib/api";
 import { DashboardLayout } from "@/components/layout/dashboard-layout";
+import { EditorialPageHeader } from "@/components/story/EditorialPageHeader";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
@@ -20,22 +21,32 @@ export default function AdminCandidatesPage() {
   const [candidates, setCandidates] = useState([]);
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState("");
+  const [errorMsg, setErrorMsg] = useState("");
 
   useEffect(() => {
+    let active = true;
     const fetchCandidates = async () => {
       try {
         const res = await apiFetch("/api/admin/candidates");
+        const data = await res.json().catch(() => ({}));
+        if (!active) return;
         if (res.ok) {
-          const data = await res.json();
           setCandidates(data.candidates || []);
+        } else {
+          setErrorMsg(data.error || "Failed to load candidates.");
         }
       } catch (error) {
+        if (!active) return;
         console.error("Failed to load candidates:", error);
+        setErrorMsg("Network error while loading candidate directory.");
       } finally {
-        setLoading(false);
+        if (active) setLoading(false);
       }
     };
     fetchCandidates();
+    return () => {
+      active = false;
+    };
   }, []);
 
   const filteredCandidates = candidates.filter((cand) => {
@@ -60,51 +71,48 @@ export default function AdminCandidatesPage() {
   return (
     <DashboardLayout>
       <div className="space-y-6">
-        {/* Header */}
-        <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between border-b border-[#E2E8F0] pb-5">
-          <div>
-            <div className="flex items-center gap-2 font-mono text-[11px] font-semibold uppercase tracking-[0.06em] text-[#64748B]">
-              <Link href="/admin" className="hover:text-[#4F46E5]">
-                ADMIN
-              </Link>
-              <span>/</span>
-              <span className="text-[#4F46E5]">CANDIDATE ROSTER</span>
-            </div>
-            <h1 className="mt-1.5 font-display text-2xl sm:text-[28px] font-bold tracking-[-0.025em] text-[#0F172A]">
-              Registered Candidates Directory
-            </h1>
-            <p className="mt-1 text-[14px] text-[#475569]">
-              Track candidate profiles, verified skills count, PMKVY enrollments, and latest readiness gaps.
-            </p>
-          </div>
-
-          <Link href="/admin">
-            <Button variant="outline" size="sm">
-              <ArrowLeft className="mr-1.5 h-3.5 w-3.5" />
-              Back to Console
-            </Button>
-          </Link>
-        </div>
+        {/* Editorial Header */}
+        <EditorialPageHeader
+          variant="light"
+          eyebrow="ADMIN / CANDIDATE ROSTER"
+          title="Registered Candidates"
+          italicAccent="Directory."
+          description="Track candidate profiles, verified skills count, PMKVY enrollments, and latest readiness gaps."
+          rightSlot={
+            <Link href="/admin">
+              <Button variant="outline" size="sm">
+                <ArrowLeft className="mr-1.5 h-3.5 w-3.5" />
+                Back to Console
+              </Button>
+            </Link>
+          }
+        />
 
         {/* Summary KPI Strip */}
+        {errorMsg && (
+          <div className="rounded-xl border border-[#FECACA] bg-[#FEF2F2] px-4 py-3 text-[13px] font-medium text-[#991B1B]">
+            {errorMsg}
+          </div>
+        )}
+
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
           <div className="prepp-card p-4 flex items-center justify-between">
             <div>
-              <div className="font-mono text-[11px] uppercase tracking-wider text-[#64748B]">
+              <div className="font-mono text-[11px] uppercase tracking-wider text-[#52525B]">
                 Total Candidates
               </div>
-              <div className="mt-1 font-mono text-2xl font-bold text-[#0F172A]">
+              <div className="mt-1 font-mono text-2xl font-bold text-[#111113]">
                 {candidates.length}
               </div>
             </div>
-            <div className="flex h-9 w-9 items-center justify-center rounded-lg border border-[#C7C4D8] bg-[#F2F3FF] text-[#4F46E5]">
+            <div className="flex h-9 w-9 items-center justify-center rounded-lg border border-[#C7D2FE] bg-[#EEF0FF] text-[#4F46E5]">
               <Users className="h-4 w-4" />
             </div>
           </div>
 
           <div className="prepp-card p-4 flex items-center justify-between">
             <div>
-              <div className="font-mono text-[11px] uppercase tracking-wider text-[#64748B]">
+              <div className="font-mono text-[11px] uppercase tracking-wider text-[#52525B]">
                 Assessed Profiles
               </div>
               <div className="mt-1 font-mono text-2xl font-bold text-[#065F46]">
@@ -118,14 +126,14 @@ export default function AdminCandidatesPage() {
 
           <div className="prepp-card p-4 flex items-center justify-between">
             <div>
-              <div className="font-mono text-[11px] uppercase tracking-wider text-[#64748B]">
+              <div className="font-mono text-[11px] uppercase tracking-wider text-[#52525B]">
                 Active Course Enrollments
               </div>
-              <div className="mt-1 font-mono text-2xl font-bold text-[#0F172A]">
+              <div className="mt-1 font-mono text-2xl font-bold text-[#111113]">
                 {totalEnrollments}
               </div>
             </div>
-            <div className="flex h-9 w-9 items-center justify-center rounded-lg border border-[#E2E8F0] bg-[#F8FAFC] text-[#4F46E5]">
+            <div className="flex h-9 w-9 items-center justify-center rounded-lg border border-[#E6E4DE] bg-[#F6F5F0] text-[#4F46E5]">
               <BookOpen className="h-4 w-4" />
             </div>
           </div>
@@ -134,7 +142,7 @@ export default function AdminCandidatesPage() {
         {/* Search Filter */}
         <div className="prepp-card p-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <div className="relative flex-1 max-w-md">
-            <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[#64748B]" />
+            <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[#52525B]" />
             <Input
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
@@ -142,7 +150,7 @@ export default function AdminCandidatesPage() {
               className="pl-9"
             />
           </div>
-          <span className="font-mono text-[12px] text-[#64748B]">
+          <span className="font-mono text-[12px] text-[#52525B]">
             Showing {filteredCandidates.length} of {candidates.length}
           </span>
         </div>
@@ -152,7 +160,7 @@ export default function AdminCandidatesPage() {
           <div className="overflow-x-auto">
             <table className="w-full text-left border-collapse">
               <thead>
-                <tr className="border-y border-[#E2E8F0] bg-[#F8FAFC] font-mono text-[11px] font-semibold uppercase tracking-wider text-[#64748B]">
+                <tr className="border-y border-[#E6E4DE] bg-[#F6F5F0] font-mono text-[11px] font-semibold uppercase tracking-wider text-[#52525B]">
                   <th className="px-6 py-3">Candidate</th>
                   <th className="px-6 py-3">Location &amp; Education</th>
                   <th className="px-6 py-3">Target Field</th>
@@ -162,16 +170,16 @@ export default function AdminCandidatesPage() {
                   <th className="px-6 py-3 text-right">Joined</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-[#E2E8F0] text-[13px]">
+              <tbody className="divide-y divide-[#E6E4DE] text-[13px]">
                 {loading ? (
                   <tr>
-                    <td colSpan={7} className="px-6 py-10 text-center text-[#64748B]">
+                    <td colSpan={7} className="px-6 py-10 text-center text-[#52525B]">
                       Loading candidate directory...
                     </td>
                   </tr>
                 ) : filteredCandidates.length === 0 ? (
                   <tr>
-                    <td colSpan={7} className="px-6 py-10 text-center text-[#64748B]">
+                    <td colSpan={7} className="px-6 py-10 text-center text-[#52525B]">
                       No candidate accounts match your search.
                     </td>
                   </tr>
@@ -185,39 +193,39 @@ export default function AdminCandidatesPage() {
                     return (
                       <tr
                         key={cand.id}
-                        className="hover:bg-[#F8FAFC] transition-colors"
+                        className="hover:bg-[#F6F5F0] transition-colors"
                       >
                         <td className="px-6 py-3.5">
-                          <div className="font-semibold text-[#0F172A]">
+                          <div className="font-semibold text-[#111113]">
                             {cand.name}
                           </div>
-                          <div className="font-mono text-[11px] text-[#64748B]">
+                          <div className="font-mono text-[11px] text-[#52525B]">
                             {cand.email}
                           </div>
                         </td>
-                        <td className="px-6 py-3.5 text-[12px] text-[#475569]">
+                        <td className="px-6 py-3.5 text-[12px] text-[#52525B]">
                           <div className="flex items-center gap-1.5">
-                            <MapPin className="h-3 w-3 text-[#64748B]" />
+                            <MapPin className="h-3 w-3 text-[#52525B]" />
                             <span>{cand.profile?.location || "—"}</span>
                           </div>
-                          <div className="mt-0.5 flex items-center gap-1.5 text-[#64748B]">
+                          <div className="mt-0.5 flex items-center gap-1.5 text-[#52525B]">
                             <GraduationCap className="h-3 w-3" />
                             <span>{cand.profile?.education || "Not set"}</span>
                           </div>
                         </td>
-                        <td className="px-6 py-3.5 font-mono text-[12px] text-[#334155]">
+                        <td className="px-6 py-3.5 font-mono text-[12px] text-[#27272A]">
                           {cand.profile?.desiredCareerField || "General"}
                         </td>
-                        <td className="px-6 py-3.5 font-mono text-[12px] font-semibold text-[#0F172A]">
+                        <td className="px-6 py-3.5 font-mono text-[12px] font-semibold text-[#111113]">
                           {cand._count?.candidateSkills ?? 0}
                         </td>
-                        <td className="px-6 py-3.5 font-mono text-[12px] font-semibold text-[#0F172A]">
+                        <td className="px-6 py-3.5 font-mono text-[12px] font-semibold text-[#111113]">
                           {cand.enrollments?.length ?? 0}
                         </td>
                         <td className="px-6 py-3.5">
                           {latestAssessment ? (
                             <div className="space-y-1">
-                              <div className="text-[12px] font-medium text-[#0F172A]">
+                              <div className="text-[12px] font-medium text-[#111113]">
                                 {latestAssessment.jobRole?.title || "Assessed Role"}
                               </div>
                               <span
@@ -236,7 +244,7 @@ export default function AdminCandidatesPage() {
                             </span>
                           )}
                         </td>
-                        <td className="px-6 py-3.5 text-right font-mono text-[12px] text-[#64748B]">
+                        <td className="px-6 py-3.5 text-right font-mono text-[12px] text-[#52525B]">
                           {cand.createdAt
                             ? new Date(cand.createdAt).toLocaleDateString("en-IN", {
                                 day: "2-digit",

@@ -4,6 +4,7 @@ import { useState, useEffect } from "react";
 import Link from "next/link";
 import { apiFetch } from "@/lib/api";
 import { DashboardLayout } from "@/components/layout/dashboard-layout";
+import { EditorialPageHeader } from "@/components/story/EditorialPageHeader";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import {
@@ -11,9 +12,7 @@ import {
   Layers,
   Briefcase,
   BookOpen,
-  ClipboardCheck,
   ArrowRight,
-  ShieldCheck,
   Activity,
 } from "lucide-react";
 import {
@@ -39,13 +38,16 @@ export default function AdminDashboardPage() {
   const [popularSkills, setPopularSkills] = useState([]);
   const [recentCandidates, setRecentCandidates] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [errorMsg, setErrorMsg] = useState("");
 
   useEffect(() => {
+    let active = true;
     const fetchAdminStats = async () => {
       try {
         const res = await apiFetch("/api/admin/stats");
+        const data = await res.json().catch(() => ({}));
+        if (!active) return;
         if (res.ok) {
-          const data = await res.json();
           setStats(data.stats || {});
           setSkillsByDomain(
             (data.skillsByDomain || []).map((item) => ({
@@ -60,14 +62,21 @@ export default function AdminDashboardPage() {
             }))
           );
           setRecentCandidates(data.recentCandidates || []);
+        } else {
+          setErrorMsg(data.error || "Failed to load admin telemetry.");
         }
       } catch (error) {
+        if (!active) return;
         console.error("Failed to load admin stats:", error);
+        setErrorMsg("Network error while fetching admin stats.");
       } finally {
-        setLoading(false);
+        if (active) setLoading(false);
       }
     };
     fetchAdminStats();
+    return () => {
+      active = false;
+    };
   }, []);
 
   const completionRate =
@@ -78,117 +87,123 @@ export default function AdminDashboardPage() {
   return (
     <DashboardLayout>
       <div className="space-y-6">
-        {/* Admin Header Banner */}
-        <div className="prepp-card overflow-hidden">
-          <div className="h-1 w-full bg-gradient-to-r from-[#3525CD] via-[#4F46E5] to-[#10B981]" />
-          <div className="p-6 flex flex-col gap-5 lg:flex-row lg:items-center lg:justify-between">
-            <div>
-              <div className="inline-flex items-center gap-1.5 rounded-md border border-[#C7C4D8] bg-[#F2F3FF] px-2.5 py-1 font-mono text-[11px] font-semibold uppercase tracking-wider text-[#3525CD]">
-                <ShieldCheck className="h-3.5 w-3.5" />
-                ADMIN CONSOLE · NSDC / PMKVY TELEMETRY
-              </div>
-              <h1 className="mt-3 font-display text-2xl sm:text-[28px] font-bold tracking-[-0.025em] text-[#0F172A]">
-                Program Intelligence &amp; Registry Overview
-              </h1>
-              <p className="mt-1 text-[14px] text-[#475569]">
-                Monitor platform-wide candidate skill audits, Sector Skill Council taxonomies, job role mappings, and PMKVY enrollments.
-              </p>
-            </div>
-
+        {/* Editorial Studio Admin Header */}
+        <EditorialPageHeader
+          variant="studio"
+          eyebrow="ADMIN CONSOLE • NSDC / PMKVY TELEMETRY"
+          title="Program Intelligence &"
+          italicAccent="Registry Overview."
+          description="Monitor platform-wide candidate skill audits, Sector Skill Council taxonomies, job role mappings, and PMKVY enrollments."
+          rightSlot={
             <div className="flex flex-wrap gap-2">
               <Link href="/admin/skills">
-                <Button variant="outline" size="sm">
+                <Button variant="secondary" size="sm">
                   Skills Matrix
                 </Button>
               </Link>
               <Link href="/admin/job-roles">
-                <Button variant="outline" size="sm">
+                <Button variant="secondary" size="sm">
                   Job Roles
                 </Button>
               </Link>
               <Link href="/admin/courses">
-                <Button variant="outline" size="sm">
+                <Button variant="secondary" size="sm">
                   Courses
                 </Button>
               </Link>
               <Link href="/admin/candidates">
-                <Button size="sm">
+                <Button variant="terracotta" size="sm">
                   Candidates
                   <ArrowRight className="ml-1.5 h-3.5 w-3.5" />
                 </Button>
               </Link>
             </div>
-          </div>
-        </div>
+          }
+        />
 
         {/* KPI Cards Row */}
-        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
-          <Link href="/admin/candidates" className="prepp-card-interactive p-5 block">
+        {errorMsg && (
+          <div className="rounded-xl border border-[#FECACA] bg-[#FEF2F2] px-4 py-3 text-[13px] font-medium text-[#991B1B]">
+            {errorMsg}
+          </div>
+        )}
+
+        <div className="grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-4">
+          <Link href="/admin/candidates" className="prepp-card-interactive p-6 flex flex-col justify-between block">
             <div className="flex items-center justify-between">
-              <span className="font-mono text-[11px] font-semibold uppercase tracking-wider text-[#64748B]">
-                Registered Candidates
-              </span>
-              <div className="flex h-8 w-8 items-center justify-center rounded-lg border border-[#C7C4D8] bg-[#F2F3FF] text-[#4F46E5]">
-                <Users className="h-4 w-4" />
+              <div className="flex h-10 w-10 items-center justify-center rounded-full bg-[#EEF0FF] text-[#4F46E5]">
+                <Users className="h-4.5 w-4.5" />
+              </div>
+              <span className="bento-chip">Roster</span>
+            </div>
+            <div className="mt-4">
+              <div className="text-[12px] font-medium text-[#71717A]">Registered Candidates</div>
+              <div className="mt-0.5 font-display text-3xl font-bold text-[#111113]">
+                {loading ? "—" : stats.totalCandidates}
               </div>
             </div>
-            <div className="mt-3 font-mono text-3xl font-bold text-[#0F172A]">
-              {loading ? "—" : stats.totalCandidates}
-            </div>
-            <div className="mt-1.5 font-mono text-[11px] text-[#4F46E5]">
-              View Candidate Roster →
+            <div className="mt-4 pt-3 border-t border-[#F0F1F3] flex items-center justify-between text-[11.5px] font-medium text-[#111113]">
+              <span>View Roster</span>
+              <ArrowRight className="h-3.5 w-3.5" />
             </div>
           </Link>
 
-          <Link href="/admin/skills" className="prepp-card-interactive p-5 block">
+          <Link href="/admin/skills" className="prepp-card-interactive p-6 flex flex-col justify-between block">
             <div className="flex items-center justify-between">
-              <span className="font-mono text-[11px] font-semibold uppercase tracking-wider text-[#64748B]">
-                Skill Taxonomy Items
-              </span>
-              <div className="flex h-8 w-8 items-center justify-center rounded-lg border border-[#A7F3D0] bg-[#ECFDF5] text-[#10B981]">
-                <Layers className="h-4 w-4" />
+              <div className="flex h-10 w-10 items-center justify-center rounded-full bg-[#ECFDF5] text-[#059669]">
+                <Layers className="h-4.5 w-4.5" />
+              </div>
+              <span className="bento-chip">Taxonomies</span>
+            </div>
+            <div className="mt-4">
+              <div className="text-[12px] font-medium text-[#71717A]">Skill Taxonomy Items</div>
+              <div className="mt-0.5 font-display text-3xl font-bold text-[#111113]">
+                {loading ? "—" : stats.totalSkills}
               </div>
             </div>
-            <div className="mt-3 font-mono text-3xl font-bold text-[#0F172A]">
-              {loading ? "—" : stats.totalSkills}
-            </div>
-            <div className="mt-1.5 font-mono text-[11px] text-[#065F46]">
-              Manage Domain Taxonomy →
+            <div className="mt-4 pt-3 border-t border-[#F0F1F3] flex items-center justify-between text-[11.5px] font-medium text-[#111113]">
+              <span>Manage Skills</span>
+              <ArrowRight className="h-3.5 w-3.5" />
             </div>
           </Link>
 
-          <Link href="/admin/job-roles" className="prepp-card-interactive p-5 block">
+          <Link href="/admin/job-roles" className="prepp-card-interactive p-6 flex flex-col justify-between block">
             <div className="flex items-center justify-between">
-              <span className="font-mono text-[11px] font-semibold uppercase tracking-wider text-[#64748B]">
-                Mapped Job Roles
-              </span>
-              <div className="flex h-8 w-8 items-center justify-center rounded-lg border border-[#FDE68A] bg-[#FFFBEB] text-[#F59E0B]">
-                <Briefcase className="h-4 w-4" />
+              <div className="flex h-10 w-10 items-center justify-center rounded-full bg-[#FFFBEB] text-[#D97706]">
+                <Briefcase className="h-4.5 w-4.5" />
+              </div>
+              <span className="bento-chip">QP-NOS</span>
+            </div>
+            <div className="mt-4">
+              <div className="text-[12px] font-medium text-[#71717A]">Mapped Job Roles</div>
+              <div className="mt-0.5 font-display text-3xl font-bold text-[#111113]">
+                {loading ? "—" : stats.totalJobRoles}
               </div>
             </div>
-            <div className="mt-3 font-mono text-3xl font-bold text-[#0F172A]">
-              {loading ? "—" : stats.totalJobRoles}
-            </div>
-            <div className="mt-1.5 font-mono text-[11px] text-[#92400E]">
-              Inspect NOS Benchmarks →
+            <div className="mt-4 pt-3 border-t border-[#F0F1F3] flex items-center justify-between text-[11.5px] font-medium text-[#111113]">
+              <span>Inspect Roles</span>
+              <ArrowRight className="h-3.5 w-3.5" />
             </div>
           </Link>
 
-          <Link href="/admin/courses" className="prepp-card-interactive p-5 block">
+          <Link href="/admin/courses" className="bento-sage-card p-6 flex flex-col justify-between block group">
             <div className="flex items-center justify-between">
-              <span className="font-mono text-[11px] font-semibold uppercase tracking-wider text-[#64748B]">
-                PMKVY Bridge Courses
+              <span className="inline-flex items-center px-2.5 py-0.5 rounded-full bg-white text-[#141913] font-mono text-[10.5px] font-semibold">
+                #PMKVY 4.0
               </span>
-              <div className="flex h-8 w-8 items-center justify-center rounded-lg border border-[#E2E8F0] bg-[#F8FAFC] text-[#334155]">
-                <BookOpen className="h-4 w-4" />
+              <BookOpen className="h-4.5 w-4.5 text-[#141913]/80" />
+            </div>
+            <div className="mt-4">
+              <div className="text-[12px] font-medium text-[#141913]/75">PMKVY Bridge Courses</div>
+              <div className="mt-0.5 font-display text-3xl font-bold text-[#141913]">
+                {loading ? "—" : stats.totalCourses}
               </div>
             </div>
-            <div className="mt-3 font-mono text-3xl font-bold text-[#0F172A]">
-              {loading ? "—" : stats.totalCourses}
-            </div>
-            <div className="mt-1.5 flex items-center gap-1.5 font-mono text-[11px] text-[#64748B]">
-              <ClipboardCheck className="h-3.5 w-3.5 text-[#10B981]" />
-              {stats.completedAssessments}/{stats.totalAssessments} audits ({completionRate}%)
+            <div className="mt-4 pt-3 border-t border-black/[0.08] flex items-center justify-between text-[11.5px] font-semibold text-[#141913]">
+              <span>{completionRate}% audit completion</span>
+              <span className="h-7 w-7 rounded-full bg-[#18181B] text-white flex items-center justify-center group-hover:translate-x-0.5 transition-transform">
+                <ArrowRight className="h-3.5 w-3.5" />
+              </span>
             </div>
           </Link>
         </div>
@@ -196,16 +211,16 @@ export default function AdminDashboardPage() {
         {/* Analytics Charts Row */}
         <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
           <div className="prepp-card p-6">
-            <div className="flex items-center justify-between border-b border-[#E2E8F0] pb-3.5">
+            <div className="flex items-center justify-between border-b border-[#E6E4DE] pb-3.5">
               <div>
                 <div className="font-mono text-[11px] font-semibold uppercase tracking-wider text-[#4F46E5]">
                   TAXONOMY DISTRIBUTION
                 </div>
-                <h2 className="mt-0.5 font-display text-lg font-bold text-[#0F172A]">
+                <h2 className="mt-0.5 font-display text-lg font-bold text-[#111113]">
                   Skills by SSC Domain
                 </h2>
               </div>
-              <Activity className="h-4 w-4 text-[#64748B]" />
+              <Activity className="h-4 w-4 text-[#52525B]" />
             </div>
 
             <div className="mt-5 h-[280px] w-full">
@@ -215,30 +230,30 @@ export default function AdminDashboardPage() {
                     data={skillsByDomain}
                     margin={{ top: 10, right: 16, left: 4, bottom: 26 }}
                   >
-                    <CartesianGrid strokeDasharray="3 3" stroke="#E2E8F0" />
+                    <CartesianGrid strokeDasharray="3 3" stroke="#E6E4DE" />
                     <XAxis
                       dataKey="domain"
                       height={56}
-                      tick={{ fill: "#64748B", fontSize: 10 }}
+                      tick={{ fill: "#52525B", fontSize: 10 }}
                       interval={0}
                       angle={-15}
                       textAnchor="end"
                       tickFormatter={(v) =>
                         v && v.length > 14 ? `${v.slice(0, 12)}…` : v
                       }
-                      axisLine={{ stroke: "#CBD5E1" }}
+                      axisLine={{ stroke: "#D5D2CA" }}
                       tickLine={false}
                     />
                     <YAxis
                       allowDecimals={false}
-                      tick={{ fill: "#64748B", fontSize: 11, fontFamily: "monospace" }}
-                      axisLine={{ stroke: "#CBD5E1" }}
+                      tick={{ fill: "#52525B", fontSize: 11, fontFamily: "monospace" }}
+                      axisLine={{ stroke: "#D5D2CA" }}
                       tickLine={false}
                     />
                     <Tooltip
                       contentStyle={{
                         backgroundColor: "#FFFFFF",
-                        border: "1px solid #E2E8F0",
+                        border: "1px solid #E6E4DE",
                         borderRadius: "8px",
                         fontSize: "12px",
                       }}
@@ -253,7 +268,7 @@ export default function AdminDashboardPage() {
                   </BarChart>
                 </ResponsiveContainer>
               ) : (
-                <div className="flex h-full items-center justify-center rounded-lg border border-dashed border-[#CBD5E1] bg-[#F8FAFC] text-[13px] text-[#64748B]">
+                <div className="flex h-full items-center justify-center rounded-lg border border-dashed border-[#D5D2CA] bg-[#F6F5F0] text-[13px] text-[#52525B]">
                   No domain breakdown records found.
                 </div>
               )}
@@ -261,16 +276,16 @@ export default function AdminDashboardPage() {
           </div>
 
           <div className="prepp-card p-6">
-            <div className="flex items-center justify-between border-b border-[#E2E8F0] pb-3.5">
+            <div className="flex items-center justify-between border-b border-[#E6E4DE] pb-3.5">
               <div>
                 <div className="font-mono text-[11px] font-semibold uppercase tracking-wider text-[#10B981]">
                   CANDIDATE DEMAND SIGNAL
                 </div>
-                <h2 className="mt-0.5 font-display text-lg font-bold text-[#0F172A]">
+                <h2 className="mt-0.5 font-display text-lg font-bold text-[#111113]">
                   Most Logged Competencies
                 </h2>
               </div>
-              <Layers className="h-4 w-4 text-[#64748B]" />
+              <Layers className="h-4 w-4 text-[#52525B]" />
             </div>
 
             <div className="mt-5 h-[280px] w-full">
@@ -280,30 +295,30 @@ export default function AdminDashboardPage() {
                     data={popularSkills}
                     margin={{ top: 10, right: 16, left: 4, bottom: 26 }}
                   >
-                    <CartesianGrid strokeDasharray="3 3" stroke="#E2E8F0" />
+                    <CartesianGrid strokeDasharray="3 3" stroke="#E6E4DE" />
                     <XAxis
                       dataKey="skillName"
                       height={56}
-                      tick={{ fill: "#64748B", fontSize: 10 }}
+                      tick={{ fill: "#52525B", fontSize: 10 }}
                       interval={0}
                       angle={-15}
                       textAnchor="end"
                       tickFormatter={(v) =>
                         v && v.length > 14 ? `${v.slice(0, 12)}…` : v
                       }
-                      axisLine={{ stroke: "#CBD5E1" }}
+                      axisLine={{ stroke: "#D5D2CA" }}
                       tickLine={false}
                     />
                     <YAxis
                       allowDecimals={false}
-                      tick={{ fill: "#64748B", fontSize: 11, fontFamily: "monospace" }}
-                      axisLine={{ stroke: "#CBD5E1" }}
+                      tick={{ fill: "#52525B", fontSize: 11, fontFamily: "monospace" }}
+                      axisLine={{ stroke: "#D5D2CA" }}
                       tickLine={false}
                     />
                     <Tooltip
                       contentStyle={{
                         backgroundColor: "#FFFFFF",
-                        border: "1px solid #E2E8F0",
+                        border: "1px solid #E6E4DE",
                         borderRadius: "8px",
                         fontSize: "12px",
                       }}
@@ -318,7 +333,7 @@ export default function AdminDashboardPage() {
                   </BarChart>
                 </ResponsiveContainer>
               ) : (
-                <div className="flex h-full items-center justify-center rounded-lg border border-dashed border-[#CBD5E1] bg-[#F8FAFC] text-[13px] text-[#64748B]">
+                <div className="flex h-full items-center justify-center rounded-lg border border-dashed border-[#D5D2CA] bg-[#F6F5F0] text-[13px] text-[#52525B]">
                   No skill frequency metrics recorded yet.
                 </div>
               )}
@@ -330,10 +345,10 @@ export default function AdminDashboardPage() {
         <div className="prepp-card overflow-hidden">
           <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between px-6 py-4">
             <div>
-              <h2 className="font-display text-lg font-bold text-[#0F172A]">
+              <h2 className="font-display text-lg font-bold text-[#111113]">
                 Recent Candidate Registrations
               </h2>
-              <p className="text-[13px] text-[#64748B]">
+              <p className="text-[13px] text-[#52525B]">
                 Latest accounts onboarded into the skill gap and PMKVY pipeline.
               </p>
             </div>
@@ -348,19 +363,19 @@ export default function AdminDashboardPage() {
           <div className="overflow-x-auto">
             <table className="w-full text-left border-collapse">
               <thead>
-                <tr className="border-y border-[#E2E8F0] bg-[#F8FAFC] font-mono text-[11px] font-semibold uppercase tracking-wider text-[#64748B]">
+                <tr className="border-y border-[#E6E4DE] bg-[#F6F5F0] font-mono text-[11px] font-semibold uppercase tracking-wider text-[#52525B]">
                   <th className="px-6 py-3">Candidate Name</th>
                   <th className="px-6 py-3">Email Address</th>
                   <th className="px-6 py-3">Joined Date</th>
                   <th className="px-6 py-3 text-right">Status</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-[#E2E8F0] text-[13px]">
+              <tbody className="divide-y divide-[#E6E4DE] text-[13px]">
                 {recentCandidates.length === 0 ? (
                   <tr>
                     <td
                       colSpan={4}
-                      className="px-6 py-8 text-center text-[#64748B]"
+                      className="px-6 py-8 text-center text-[#52525B]"
                     >
                       No recent candidate registrations found.
                     </td>
@@ -369,15 +384,15 @@ export default function AdminDashboardPage() {
                   recentCandidates.map((cand) => (
                     <tr
                       key={cand.id}
-                      className="hover:bg-[#F8FAFC] transition-colors"
+                      className="hover:bg-[#F6F5F0] transition-colors"
                     >
-                      <td className="px-6 py-3.5 font-medium text-[#0F172A]">
+                      <td className="px-6 py-3.5 font-medium text-[#111113]">
                         {cand.name}
                       </td>
-                      <td className="px-6 py-3.5 font-mono text-[12px] text-[#475569]">
+                      <td className="px-6 py-3.5 font-mono text-[12px] text-[#52525B]">
                         {cand.email}
                       </td>
-                      <td className="px-6 py-3.5 font-mono text-[12px] text-[#64748B]">
+                      <td className="px-6 py-3.5 font-mono text-[12px] text-[#52525B]">
                         {cand.createdAt
                           ? new Date(cand.createdAt).toLocaleDateString("en-IN", {
                               day: "2-digit",

@@ -6,10 +6,25 @@ import User from "../models/User.js";
 import CandidateProfile from "../models/CandidateProfile.js";
 import { loginSchema, registerSchema } from "../utils/validations.js";
 import { requireAuth, signAuthToken } from "../middleware/auth.js";
+import { createRateLimiter } from "../middleware/rateLimit.js";
 
 const router = Router();
 
-router.post("/auth/login", async (req, res) => {
+const loginLimiter = createRateLimiter({
+    windowMs: 15 * 60 * 1000,
+    max: 30,
+    keyPrefix: "login",
+    message: "Too many sign-in attempts. Please wait a few minutes and try again.",
+});
+
+const registerLimiter = createRateLimiter({
+    windowMs: 15 * 60 * 1000,
+    max: 15,
+    keyPrefix: "register",
+    message: "Too many registration attempts. Please wait a few minutes and try again.",
+});
+
+router.post("/auth/login", loginLimiter, async (req, res) => {
     try {
         const validation = loginSchema.safeParse(req.body || {});
         if (!validation.success) {
@@ -45,7 +60,7 @@ router.post("/auth/login", async (req, res) => {
     }
 });
 
-router.post("/register", async (req, res) => {
+router.post("/register", registerLimiter, async (req, res) => {
     try {
         const validation = registerSchema.safeParse(req.body || {});
         if (!validation.success) {
@@ -90,6 +105,9 @@ router.post("/register", async (req, res) => {
             user,
         });
     } catch (error) {
+        if (error?.code === 11000) {
+            return res.status(400).json({ error: "An account with this email already exists" });
+        }
         console.error("Registration error:", error);
         return res.status(500).json({ error: "Failed to register user. Check MongoDB connection." });
     }

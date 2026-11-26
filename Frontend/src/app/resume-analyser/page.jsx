@@ -1,13 +1,15 @@
 "use client";
 // [FRONTEND] Dual AI Resume Analyser (QP-NOS & Job Link/JD) | Route: /resume-analyser | Uses: GET/POST /api/ai-resume-analyser, POST /api/ai-resume-analyser/save, document-parser.js, auth-context.jsx
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, Suspense } from "react";
+import Link from "next/link";
+import { useSearchParams } from "next/navigation";
 import { DashboardLayout } from "@/components/layout/dashboard-layout";
+import { EditorialPageHeader } from "@/components/story/EditorialPageHeader";
+import { PdfUploadCard } from "@/components/ui/PdfUploadCard";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { useSession } from "@/lib/auth-context";
 import { apiFetch } from "@/lib/api";
-import { Sparkles, Upload, Link as LinkIcon, FileText, CheckCircle2, AlertTriangle, XCircle, ExternalLink, BookOpen, ArrowRight, Brain, ShieldCheck, RefreshCw, Download, Search, Eye, Info, Building2, Printer, Check, } from "lucide-react";
+import { Sparkles, Link as LinkIcon, FileText, CheckCircle2, AlertTriangle, XCircle, ExternalLink, BookOpen, ArrowRight, Brain, ShieldCheck, RefreshCw, Download, Search, Eye, Info, Building2, Printer, Check } from "lucide-react";
 import { extractTextFromFile } from "@/lib/document-parser";
 // Sector Skill Councils registered under MSDE
 const SECTOR_SKILL_COUNCILS = [
@@ -143,11 +145,17 @@ Qualifications:
 - Hands-on experience with diagnostic software tools`,
     },
 };
-export default function AIResumeAnalyserPage() {
-    const { data: session } = useSession();
+function ResumeAnalyserContent() {
+    const searchParams = useSearchParams();
+    const modeParam = (searchParams.get("mode") || "").toLowerCase();
+    const initialMode =
+        modeParam === "job-link" || modeParam === "url" || modeParam === "linkedin"
+            ? "LINKEDIN"
+            : "QP_NOS";
+
     const fileInputRef = useRef(null);
     // Input Mode & Text States
-    const [targetMode, setTargetMode] = useState("QP_NOS");
+    const [targetMode, setTargetMode] = useState(initialMode);
     const [resumeText, setResumeText] = useState("");
     const [uploadedFileMeta, setUploadedFileMeta] = useState(null);
     const [showTextPreview, setShowTextPreview] = useState(false);
@@ -170,47 +178,8 @@ export default function AIResumeAnalyserPage() {
     const [savingProfile, setSavingProfile] = useState(false);
     const [profileSaved, setProfileSaved] = useState(false);
     const [enrollModalCourse, setEnrollModalCourse] = useState(null);
-    // Google Gemini Generative AI Key State (uses shared server key automatically)
+    // Google Gemini Generative AI status (uses shared server key automatically)
     const [serverAiConfigured, setServerAiConfigured] = useState(true);
-    const [geminiApiKey, setGeminiApiKey] = useState("");
-    const [showApiSettings, setShowApiSettings] = useState(false);
-    const [tempApiKey, setTempApiKey] = useState("");
-    const [showKeyText, setShowKeyText] = useState(false);
-
-    useEffect(() => {
-        if (typeof window !== "undefined") {
-            const params = new URLSearchParams(window.location.search);
-            const modeParam = (params.get("mode") || "").toLowerCase();
-            if (modeParam === "job-link" || modeParam === "url" || modeParam === "linkedin") {
-                setTargetMode("LINKEDIN");
-            }
-            const saved = localStorage.getItem("pmkvy_gemini_key") || "";
-            if (saved) {
-                setGeminiApiKey(saved);
-                setTempApiKey(saved);
-            }
-        }
-    }, []);
-
-    const saveGeminiKey = (keyToSave) => {
-        const clean = (keyToSave || "").trim();
-        setGeminiApiKey(clean);
-        setTempApiKey(clean);
-        if (typeof window !== "undefined") {
-            if (clean) {
-                localStorage.setItem("pmkvy_gemini_key", clean);
-            } else {
-                localStorage.removeItem("pmkvy_gemini_key");
-            }
-        }
-        setShowApiSettings(false);
-        setNotification({
-            type: "success",
-            message: clean
-                ? "✨ Google Gemini API Key saved! Live generative AI resume analysis enabled."
-                : "Google Gemini API key removed. Using offline PMKVY NSQF engine.",
-        });
-    };
     // Load Public QP-NOS Job Roles & AI status from API
     useEffect(() => {
         async function loadJobRoles() {
@@ -223,7 +192,10 @@ export default function AIResumeAnalyserPage() {
                     }
                     if (data.jobRoles && data.jobRoles.length > 0) {
                         setJobRoles(data.jobRoles);
-                        setSelectedJobRoleId(data.jobRoles[0].id);
+                        const defaultWebRole =
+                            data.jobRoles.find((r) => r.domain?.toLowerCase() === "web development") ||
+                            data.jobRoles[0];
+                        setSelectedJobRoleId(defaultWebRole.id);
                     }
                 }
             }
@@ -233,25 +205,35 @@ export default function AIResumeAnalyserPage() {
         }
         loadJobRoles();
     }, []);
-    // Handle Drag & Drop / File Input with Robust Parser
+    // Handle Drag & Drop / File Input with Robust Client + Server PDF Parser
     const handleFileSelection = async (file) => {
         setFileParseWarning(null);
-        setNotification(null);
+        setNotification({
+            type: "info",
+            message: `Extracting text from ${file.name}...`,
+        });
         const result = await extractTextFromFile(file);
         if (result.success && result.text) {
             setResumeText(result.text);
+            setShowTextPreview(true);
             setUploadedFileMeta({
                 name: result.fileName,
                 size: result.fileSizeFormatted,
                 wordCount: result.wordCount,
                 charCount: result.characterCount,
             });
+            setNotification({
+                type: "success",
+                message: `Extracted ${result.wordCount} words from ${result.fileName}. Ready to run diagnostic!`,
+            });
             if (result.warning) {
                 setFileParseWarning(result.warning);
             }
         }
         else {
+            setNotification(null);
             setFileParseWarning(result.warning || "Could not read text from this file.");
+            setShowTextPreview(true);
             if (result.text) {
                 setResumeText(result.text);
             }
@@ -275,7 +257,9 @@ export default function AIResumeAnalyserPage() {
         setSelectedDomain(sample.domain);
         setFileParseWarning(null);
         setNotification(null);
-        const matchingRole = jobRoles.find((r) => r.title.toLowerCase().includes(sample.role.toLowerCase()));
+        const matchingRole =
+            jobRoles.find((r) => r.title?.toLowerCase().includes(sample.role.toLowerCase())) ||
+            jobRoles.find((r) => r.domain?.toLowerCase() === sample.domain.toLowerCase());
         if (matchingRole) {
             setSelectedJobRoleId(matchingRole.id);
         }
@@ -319,6 +303,10 @@ export default function AIResumeAnalyserPage() {
         setNotification(null);
         setProfileSaved(false);
         try {
+            const customKey =
+                typeof window !== "undefined"
+                    ? (localStorage.getItem("pmkvy_gemini_key") || "").trim()
+                    : "";
             const response = await apiFetch("/api/ai-resume-analyser", {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
@@ -329,7 +317,7 @@ export default function AIResumeAnalyserPage() {
                     linkedinUrl: targetMode === "LINKEDIN" ? linkedinUrl : undefined,
                     jobDescriptionText: targetMode === "LINKEDIN" ? jobDescriptionText : undefined,
                     domain: selectedDomain,
-                    apiKey: geminiApiKey || undefined,
+                    apiKey: customKey || undefined,
                 }),
             });
             const data = await response.json();
@@ -364,7 +352,6 @@ export default function AIResumeAnalyserPage() {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({
-                    userEmail: session?.user?.email,
                     jobRoleId: targetMode === "QP_NOS" ? selectedJobRoleId : undefined,
                     jobTitle: diagnosticResult.targetJobTitle,
                     matchPercentage: diagnosticResult.matchPercentage,
@@ -414,16 +401,15 @@ export default function AIResumeAnalyserPage() {
         return true;
     });
     return (
-      <DashboardLayout>
         <div className="space-y-6 animate-fade-in">
           {/* Breadcrumb & Header Strip (PrepP Style) */}
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-            <nav aria-label="Breadcrumb" className="flex items-center gap-2 text-[12px] font-mono text-[#64748B]">
-              <a href="/dashboard" className="hover:text-[#4F46E5] transition-colors">
+            <nav aria-label="Breadcrumb" className="flex items-center gap-2 text-[12px] font-mono text-[#52525B]">
+              <Link href="/dashboard" className="hover:text-[#4F46E5] transition-colors">
                 Dashboard
-              </a>
-              <span className="text-[#CBD5E1]">/</span>
-              <span className="text-[#0F172A] font-medium">AI Resume &amp; Job Matcher</span>
+              </Link>
+              <span className="text-[#D5D2CA]">/</span>
+              <span className="text-[#111113] font-medium">AI Resume &amp; Job Matcher</span>
             </nav>
 
             <div className="flex items-center gap-2 flex-wrap">
@@ -436,33 +422,30 @@ export default function AIResumeAnalyserPage() {
                 </span>
               </div>
               <Button variant="outline" size="sm" onClick={() => window.print()}>
-                <Printer className="h-3.5 w-3.5 text-[#64748B]" />
+                <Printer className="h-3.5 w-3.5 text-[#52525B]" />
                 <span>Print Audit</span>
               </Button>
             </div>
           </div>
 
-          {/* Page Title Banner */}
-          <div className="prepp-card p-6">
-            <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-              <div className="space-y-1.5">
-                <div className="flex flex-wrap items-center gap-2">
-                  <span className="px-2 py-0.5 rounded-full text-[11px] font-mono bg-[#EAEDFF] text-[#3525CD] border border-[#C7C4D8]">
-                    AI Diagnostic Engine
-                  </span>
-                  <span className="px-2 py-0.5 rounded-full text-[11px] font-mono bg-[#ECFDF5] text-[#065F46] border border-[#A7F3D0]">
-                    QP-NOS &amp; Job Link Supported
-                  </span>
-                </div>
-                <h1 className="font-display text-2xl sm:text-[28px] font-semibold text-[#0F172A] tracking-tight">
-                  AI Resume &amp; Industry Job Matcher
-                </h1>
-                <p className="text-[14px] text-[#64748B] max-w-3xl leading-relaxed">
-                  Benchmark your CV against National Occupational Standards (QP-NOS job roles) or any live job posting URL using Google Gemini AI, and discover free PMKVY courses.
-                </p>
-              </div>
-            </div>
-          </div>
+          {/* Editorial Studio Title Banner */}
+          <EditorialPageHeader
+            variant="studio"
+            eyebrow="AI DIAGNOSTIC ENGINE • DUAL PATHWAY"
+            title="AI Resume &"
+            italicAccent="Industry Job Matcher."
+            description="Benchmark your CV against National Occupational Standards (QP-NOS job roles) or any live job posting URL using Google Gemini AI, and discover free PMKVY courses."
+            badges={
+              <>
+                <span className="px-3 py-1 rounded-full text-[11px] font-mono bg-white/10 text-indigo-200 border border-white/10">
+                  By Job Role (QP-NOS)
+                </span>
+                <span className="px-3 py-1 rounded-full text-[11px] font-mono bg-emerald-500/15 text-emerald-200 border border-emerald-400/25">
+                  By Live Job Link / JD
+                </span>
+              </>
+            }
+          />
 
           {/* In-App Notification Banner */}
           {notification && (
@@ -472,7 +455,7 @@ export default function AIResumeAnalyserPage() {
                   ? "bg-[#FEF2F2] border-[#FECACA] text-[#991B1B]"
                   : notification.type === "success"
                   ? "bg-[#ECFDF5] border-[#A7F3D0] text-[#065F46]"
-                  : "bg-[#F2F3FF] border-[#C7C4D8] text-[#3525CD]"
+                  : "bg-[#EEF0FF] border-[#C7D2FE] text-[#4F46E5]"
               }`}
             >
               <div className="flex items-start gap-2">
@@ -494,32 +477,32 @@ export default function AIResumeAnalyserPage() {
           {/* Split-Screen Workbench (5 cols Target + 7 cols Resume) */}
           <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
             {/* Target Job Benchmark Column */}
-            <div className="lg:col-span-5 prepp-card p-5 sm:p-6 flex flex-col justify-between space-y-5">
+            <div className="lg:col-span-5 prepp-card p-6 flex flex-col justify-between space-y-5">
               <div className="space-y-4">
-                <div className="flex items-center justify-between pb-3 border-b border-[#F1F5F9]">
-                  <div className="flex items-center gap-2.5">
-                    <div className="w-8 h-8 rounded-lg bg-[#EAEDFF] text-[#3525CD] flex items-center justify-center">
-                      <Building2 className="h-4 w-4" />
+                <div className="flex items-center justify-between pb-3.5 border-b border-[#F0F1F3]">
+                  <div className="flex items-center gap-3">
+                    <div className="w-10 h-10 rounded-full bg-[#EEF0FF] text-[#4F46E5] flex items-center justify-center">
+                      <Building2 className="h-4.5 w-4.5" />
                     </div>
                     <div>
-                      <h2 className="font-display text-[15px] font-semibold text-[#0F172A]">Target Job Benchmark</h2>
-                      <p className="text-[12px] text-[#64748B]">Choose QP-NOS or corporate JD</p>
+                      <h2 className="font-display text-[16px] font-semibold text-[#111113]">Target Job Benchmark</h2>
+                      <p className="text-[12px] text-[#71717A]">Choose QP-NOS or corporate JD</p>
                     </div>
                   </div>
-                  <span className="font-mono text-[10px] px-2 py-0.5 rounded bg-[#F1F5F9] border border-[#E2E8F0] text-[#475569] font-semibold">
+                  <span className="bento-chip font-mono font-semibold text-[#111113]">
                     STEP 01
                   </span>
                 </div>
 
                 {/* Dual-Mode Segmented Pill Switcher */}
-                <div className="flex p-1 bg-[#F1F5F9] rounded-lg border border-[#E2E8F0]">
+                <div className="flex p-1 bg-[#F4F5F7] rounded-xl border border-black/[0.04]">
                   <button
                     type="button"
                     onClick={() => setTargetMode("QP_NOS")}
-                    className={`flex-1 py-1.5 text-[12px] font-medium rounded-md transition-all cursor-pointer ${
+                    className={`flex-1 py-1.5 text-[12px] font-medium rounded-lg transition-all cursor-pointer ${
                       targetMode === "QP_NOS"
-                        ? "bg-white text-[#0F172A] shadow-xs border border-[#E2E8F0]/70"
-                        : "text-[#64748B] hover:text-[#0F172A]"
+                        ? "bg-white text-[#111113] shadow-xs"
+                        : "text-[#52525B] hover:text-[#111113]"
                     }`}
                   >
                     By Job Role (QP-NOS)
@@ -527,10 +510,10 @@ export default function AIResumeAnalyserPage() {
                   <button
                     type="button"
                     onClick={() => setTargetMode("LINKEDIN")}
-                    className={`flex-1 py-1.5 text-[12px] font-medium rounded-md transition-all cursor-pointer ${
+                    className={`flex-1 py-1.5 text-[12px] font-medium rounded-lg transition-all cursor-pointer ${
                       targetMode === "LINKEDIN"
-                        ? "bg-white text-[#0F172A] shadow-xs border border-[#E2E8F0]/70"
-                        : "text-[#64748B] hover:text-[#0F172A]"
+                        ? "bg-white text-[#111113] shadow-xs"
+                        : "text-[#52525B] hover:text-[#111113]"
                     }`}
                   >
                     By Job Link / JD (AI)
@@ -540,7 +523,7 @@ export default function AIResumeAnalyserPage() {
                 {targetMode === "QP_NOS" ? (
                   <div className="space-y-3.5">
                     <div>
-                      <label className="block text-[12px] font-medium text-[#0F172A] mb-1">
+                      <label className="block text-[12px] font-medium text-[#111113] mb-1">
                         Sector Skill Council (SSC)
                       </label>
                       <select
@@ -551,7 +534,7 @@ export default function AIResumeAnalyserPage() {
                           const match = jobRoles.find((r) => r.domain.toLowerCase() === domain.toLowerCase());
                           if (match) setSelectedJobRoleId(match.id);
                         }}
-                        className="w-full h-9 text-[13px] bg-white border border-[#CBD5E1] rounded-lg px-3 text-[#0F172A] focus:outline-none focus:border-[#4F46E5] focus:ring-2 focus:ring-[#4F46E5]/15"
+                        className="w-full h-9 text-[13px] bg-white border border-[#D5D2CA] rounded-lg px-3 text-[#111113] focus:outline-none focus:border-[#4F46E5] focus:ring-2 focus:ring-[#4F46E5]/15"
                       >
                         {SECTOR_SKILL_COUNCILS.map((ssc) => (
                           <option key={ssc.id} value={ssc.domain}>
@@ -563,13 +546,13 @@ export default function AIResumeAnalyserPage() {
 
                     <div className="grid grid-cols-2 gap-3">
                       <div>
-                        <label className="block text-[12px] font-medium text-[#0F172A] mb-1">
+                        <label className="block text-[12px] font-medium text-[#111113] mb-1">
                           Target NSQF Level
                         </label>
                         <select
                           value={selectedNsqfLevel}
                           onChange={(e) => setSelectedNsqfLevel(e.target.value)}
-                          className="w-full h-9 text-[13px] bg-white border border-[#CBD5E1] rounded-lg px-2.5 text-[#0F172A] focus:outline-none focus:border-[#4F46E5]"
+                          className="w-full h-9 text-[13px] bg-white border border-[#D5D2CA] rounded-lg px-2.5 text-[#111113] focus:outline-none focus:border-[#4F46E5]"
                         >
                           <option>NSQF Level 4 (Technician)</option>
                           <option>NSQF Level 5 (Senior)</option>
@@ -579,7 +562,7 @@ export default function AIResumeAnalyserPage() {
                       </div>
 
                       <div>
-                        <label className="block text-[12px] font-medium text-[#0F172A] mb-1">
+                        <label className="block text-[12px] font-medium text-[#111113] mb-1">
                           QP Standard Code
                         </label>
                         <input
@@ -592,19 +575,19 @@ export default function AIResumeAnalyserPage() {
                               ? "SSC/Q2101 - v1.0"
                               : "SSC/Q0508 - v2.0"
                           }
-                          className="w-full h-9 text-[12px] font-mono bg-[#F8FAFC] border border-[#E2E8F0] rounded-lg px-3 text-[#4F46E5] font-medium"
+                          className="w-full h-9 text-[12px] font-mono bg-[#F6F5F0] border border-[#E6E4DE] rounded-lg px-3 text-[#4F46E5] font-medium"
                         />
                       </div>
                     </div>
 
                     <div>
-                      <label className="block text-[12px] font-medium text-[#0F172A] mb-1">
+                      <label className="block text-[12px] font-medium text-[#111113] mb-1">
                         Qualification Pack (Job Role)
                       </label>
                       <select
                         value={selectedJobRoleId}
                         onChange={(e) => setSelectedJobRoleId(e.target.value)}
-                        className="w-full h-9 text-[13px] bg-white border border-[#CBD5E1] rounded-lg px-3 text-[#0F172A] focus:outline-none focus:border-[#4F46E5]"
+                        className="w-full h-9 text-[13px] bg-white border border-[#D5D2CA] rounded-lg px-3 text-[#111113] focus:outline-none focus:border-[#4F46E5]"
                       >
                         {jobRoles.map((role) => (
                           <option key={role.id} value={role.id}>
@@ -615,7 +598,7 @@ export default function AIResumeAnalyserPage() {
                     </div>
 
                     <div>
-                      <div className="font-mono text-[10px] font-semibold text-[#64748B] uppercase tracking-wider mb-1.5">
+                      <div className="font-mono text-[10px] font-semibold text-[#52525B] uppercase tracking-wider mb-1.5">
                         1-Click Popular Roles
                       </div>
                       <div className="flex flex-wrap gap-1.5">
@@ -630,7 +613,7 @@ export default function AIResumeAnalyserPage() {
                             className={`px-2.5 py-1 rounded-md text-[12px] font-medium border transition-colors cursor-pointer ${
                               selectedJobRoleId === role.id
                                 ? "bg-[#4F46E5] text-white border-[#4F46E5]"
-                                : "bg-[#F8FAFC] text-[#0F172A] border-[#E2E8F0] hover:border-[#CBD5E1]"
+                                : "bg-[#F6F5F0] text-[#111113] border-[#E6E4DE] hover:border-[#D5D2CA]"
                             }`}
                           >
                             {role.title}
@@ -642,7 +625,7 @@ export default function AIResumeAnalyserPage() {
                 ) : (
                   <div className="space-y-3.5">
                     <div>
-                      <label className="block text-[12px] font-medium text-[#0F172A] mb-1">
+                      <label className="block text-[12px] font-medium text-[#111113] mb-1">
                         Job Link URL
                       </label>
                       <div className="relative">
@@ -651,17 +634,17 @@ export default function AIResumeAnalyserPage() {
                           placeholder="https://careers.company.com/jobs/... or https://www.linkedin.com/jobs/view/..."
                           value={linkedinUrl}
                           onChange={(e) => setLinkedinUrl(e.target.value)}
-                          className="w-full h-9 text-[13px] bg-white border border-[#CBD5E1] rounded-lg pl-9 pr-3 text-[#0F172A] focus:outline-none focus:border-[#4F46E5]"
+                          className="w-full h-9 text-[13px] bg-white border border-[#D5D2CA] rounded-lg pl-9 pr-3 text-[#111113] focus:outline-none focus:border-[#4F46E5]"
                         />
-                        <LinkIcon className="h-4 w-4 text-[#64748B] absolute left-3 top-2.5" />
+                        <LinkIcon className="h-4 w-4 text-[#52525B] absolute left-3 top-2.5" />
                       </div>
-                      <p className="mt-1 text-[11px] text-[#64748B]">
+                      <p className="mt-1 text-[11px] text-[#52525B]">
                         Public career pages are extracted automatically; paste JD text below if the job portal requires sign-in.
                       </p>
                     </div>
 
                     <div>
-                      <label className="block text-[12px] font-medium text-[#0F172A] mb-1">
+                      <label className="block text-[12px] font-medium text-[#111113] mb-1">
                         Job Requirements / Description (Optional if URL is public)
                       </label>
                       <textarea
@@ -669,26 +652,26 @@ export default function AIResumeAnalyserPage() {
                         placeholder="Paste key responsibilities or required technical stack..."
                         value={jobDescriptionText}
                         onChange={(e) => setJobDescriptionText(e.target.value)}
-                        className="w-full text-[12px] font-mono bg-white border border-[#CBD5E1] rounded-lg p-3 text-[#0F172A] focus:outline-none focus:border-[#4F46E5]"
+                        className="w-full text-[12px] font-mono bg-white border border-[#D5D2CA] rounded-lg p-3 text-[#111113] focus:outline-none focus:border-[#4F46E5]"
                       />
                     </div>
 
                     <div>
-                      <div className="font-mono text-[10px] font-semibold text-[#64748B] uppercase tracking-wider mb-1.5">
+                      <div className="font-mono text-[10px] font-semibold text-[#52525B] uppercase tracking-wider mb-1.5">
                         Sample Postings (1-Click)
                       </div>
                       <div className="flex flex-wrap gap-1.5">
                         <button
                           type="button"
                           onClick={() => loadSampleLinkedInJob("frontend_fintech")}
-                          className="px-2.5 py-1 rounded-md text-[12px] bg-[#F1F5F9] hover:bg-[#EAEDFF] text-[#0F172A] border border-[#E2E8F0] font-medium cursor-pointer"
+                          className="px-2.5 py-1 rounded-md text-[12px] bg-[#EFECE6] hover:bg-[#EAECFF] text-[#111113] border border-[#E6E4DE] font-medium cursor-pointer"
                         >
                           Sr. React Developer @ FinTech
                         </button>
                         <button
                           type="button"
                           onClick={() => loadSampleLinkedInJob("ev_powertrain")}
-                          className="px-2.5 py-1 rounded-md text-[12px] bg-[#F1F5F9] hover:bg-[#EAEDFF] text-[#0F172A] border border-[#E2E8F0] font-medium cursor-pointer"
+                          className="px-2.5 py-1 rounded-md text-[12px] bg-[#EFECE6] hover:bg-[#EAECFF] text-[#111113] border border-[#E6E4DE] font-medium cursor-pointer"
                         >
                           EV Powertrain Engineer @ AutoTech
                         </button>
@@ -698,7 +681,7 @@ export default function AIResumeAnalyserPage() {
                 )}
               </div>
 
-              <div className="pt-3 border-t border-[#F1F5F9] flex items-center justify-between text-[12px] text-[#64748B]">
+              <div className="pt-3 border-t border-[#EFECE6] flex items-center justify-between text-[12px] text-[#52525B]">
                 <span className="flex items-center gap-1.5 font-mono text-[11px] text-[#065F46]">
                   <CheckCircle2 className="h-3.5 w-3.5 text-[#10B981]" />
                   NSQF Aligned
@@ -715,61 +698,32 @@ export default function AIResumeAnalyserPage() {
             </div>
 
             {/* Candidate Resume Ingestion Column */}
-            <div className="lg:col-span-7 prepp-card p-5 sm:p-6 flex flex-col justify-between space-y-5">
+            <div className="lg:col-span-7 prepp-card p-6 flex flex-col justify-between space-y-5">
               <div className="space-y-4">
-                <div className="flex items-center justify-between pb-3 border-b border-[#F1F5F9]">
-                  <div className="flex items-center gap-2.5">
-                    <div className="w-8 h-8 rounded-lg bg-[#EAEDFF] text-[#3525CD] flex items-center justify-center">
-                      <FileText className="h-4 w-4" />
+                <div className="flex items-center justify-between pb-3.5 border-b border-[#F0F1F3]">
+                  <div className="flex items-center gap-3">
+                    <div className="w-10 h-10 rounded-full bg-[#ECFDF5] text-[#059669] flex items-center justify-center">
+                      <FileText className="h-4.5 w-4.5" />
                     </div>
                     <div>
-                      <h2 className="font-display text-[15px] font-semibold text-[#0F172A]">Candidate Resume / CV</h2>
-                      <p className="text-[12px] text-[#64748B]">Upload document or paste plain resume text</p>
+                      <h2 className="font-display text-[16px] font-semibold text-[#111113]">Candidate Resume / CV</h2>
+                      <p className="text-[12px] text-[#71717A]">Upload document or paste plain resume text</p>
                     </div>
                   </div>
-                  <span className="font-mono text-[10px] px-2 py-0.5 rounded bg-[#F1F5F9] border border-[#E2E8F0] text-[#475569] font-semibold">
+                  <span className="bento-chip font-mono font-semibold text-[#111113]">
                     STEP 02
                   </span>
                 </div>
 
-                {/* Drop Zone */}
-                <div
-                  onClick={() => fileInputRef.current?.click()}
-                  onDragOver={(e) => e.preventDefault()}
-                  onDrop={(e) => {
-                    e.preventDefault();
-                    const file = e.dataTransfer.files?.[0];
-                    if (file) handleFileSelection(file);
-                  }}
-                  className="border border-dashed border-[#CBD5E1] hover:border-[#4F46E5] rounded-xl p-6 text-center bg-[#F8FAFC] hover:bg-[#F2F3FF]/50 transition-all cursor-pointer group"
-                >
-                  <input
-                    type="file"
-                    ref={fileInputRef}
-                    onChange={handleFileInputChange}
-                    accept=".pdf,.txt,.md,.rtf,.json,.csv"
-                    className="hidden"
-                  />
-
-                  <div className="w-10 h-10 rounded-lg bg-white border border-[#E2E8F0] flex items-center justify-center mx-auto mb-2.5 group-hover:border-[#4F46E5]/40 transition-colors">
-                    <Upload className="h-4.5 w-4.5 text-[#4F46E5]" />
-                  </div>
-
-                  <div className="text-[13px] font-medium text-[#0F172A]">
-                    Drop resume (PDF, TXT, MD) or <span className="text-[#4F46E5] underline">Browse files</span>
-                  </div>
-                  <p className="font-mono text-[11px] text-[#64748B] mt-1">
-                    Parsed securely • Benchmarked against official QP-NOS matrices
-                  </p>
-
-                  {uploadedFileMeta && (
-                    <div className="mt-3 inline-flex items-center gap-2 px-3 py-1 rounded-full bg-white border border-[#A7F3D0] text-[12px]">
-                      <CheckCircle2 className="h-3.5 w-3.5 text-[#10B981]" />
-                      <span className="font-medium text-[#0F172A] truncate max-w-xs">{uploadedFileMeta.name}</span>
-                      <span className="font-mono text-[11px] text-[#64748B]">({uploadedFileMeta.size})</span>
-                    </div>
-                  )}
-                </div>
+                {/* Lavender Dashed PDF Drop Zone */}
+                <PdfUploadCard
+                  fileInputRef={fileInputRef}
+                  onFileSelect={handleFileSelection}
+                  onFileChange={handleFileInputChange}
+                  uploadedFileMeta={uploadedFileMeta}
+                  accept=".pdf,.txt,.md,.rtf,.json,.csv"
+                  buttonLabel="Upload"
+                />
 
                 {fileParseWarning && (
                   <div className="p-3 rounded-lg bg-[#FEF2F2] border border-[#FECACA] text-[#991B1B] text-[12px] flex items-start gap-2">
@@ -800,35 +754,35 @@ export default function AIResumeAnalyserPage() {
                       value={resumeText}
                       onChange={(e) => setResumeText(e.target.value)}
                       placeholder="Paste or edit candidate resume text here..."
-                      className="w-full text-[12px] font-mono bg-[#F8FAFC] border border-[#CBD5E1] rounded-lg p-3 text-[#0F172A] focus:outline-none focus:border-[#4F46E5]"
+                      className="w-full text-[12px] font-mono bg-[#F6F5F0] border border-[#D5D2CA] rounded-lg p-3 text-[#111113] focus:outline-none focus:border-[#4F46E5]"
                     />
                   )}
                 </div>
 
                 {/* 1-Click Sample Resumes */}
                 <div>
-                  <div className="font-mono text-[10px] font-semibold text-[#64748B] uppercase tracking-wider mb-1.5">
+                  <div className="font-mono text-[10px] font-semibold text-[#52525B] uppercase tracking-wider mb-1.5">
                     Load Test Resumes (1-Click)
                   </div>
                   <div className="flex flex-wrap gap-1.5">
                     <button
                       type="button"
                       onClick={() => loadSampleResume("fullstack")}
-                      className="px-2.5 py-1 rounded-md text-[12px] bg-[#F1F5F9] hover:bg-[#EAEDFF] text-[#0F172A] border border-[#E2E8F0] font-medium transition-colors cursor-pointer"
+                      className="px-2.5 py-1 rounded-md text-[12px] bg-[#EFECE6] hover:bg-[#EAECFF] text-[#111113] border border-[#E6E4DE] font-medium transition-colors cursor-pointer"
                     >
                       Arun (React / Full Stack)
                     </button>
                     <button
                       type="button"
                       onClick={() => loadSampleResume("ev_tech")}
-                      className="px-2.5 py-1 rounded-md text-[12px] bg-[#F1F5F9] hover:bg-[#EAEDFF] text-[#0F172A] border border-[#E2E8F0] font-medium transition-colors cursor-pointer"
+                      className="px-2.5 py-1 rounded-md text-[12px] bg-[#EFECE6] hover:bg-[#EAECFF] text-[#111113] border border-[#E6E4DE] font-medium transition-colors cursor-pointer"
                     >
                       Aaditya (ITI EV Tech)
                     </button>
                     <button
                       type="button"
                       onClick={() => loadSampleResume("data_analyst")}
-                      className="px-2.5 py-1 rounded-md text-[12px] bg-[#F1F5F9] hover:bg-[#EAEDFF] text-[#0F172A] border border-[#E2E8F0] font-medium transition-colors cursor-pointer"
+                      className="px-2.5 py-1 rounded-md text-[12px] bg-[#EFECE6] hover:bg-[#EAECFF] text-[#111113] border border-[#E6E4DE] font-medium transition-colors cursor-pointer"
                     >
                       Priya (Data Analyst)
                     </button>
@@ -837,7 +791,7 @@ export default function AIResumeAnalyserPage() {
               </div>
 
               {/* Action Controls */}
-              <div className="pt-4 border-t border-[#F1F5F9] flex flex-col sm:flex-row items-center justify-between gap-3">
+              <div className="pt-4 border-t border-[#EFECE6] flex flex-col sm:flex-row items-center justify-between gap-3">
                 <Button type="button" variant="outline" size="sm" onClick={resetInputs} className="w-full sm:w-auto">
                   Clear Buffer
                 </Button>
@@ -863,11 +817,11 @@ export default function AIResumeAnalyserPage() {
           {/* Diagnostic Audit Report Section */}
           {diagnosticResult && (
             <section className="prepp-card p-6 sm:p-7 space-y-6 animate-fade-in">
-              <div className="border-b border-[#E2E8F0] pb-5">
+              <div className="border-b border-[#E6E4DE] pb-5">
                 <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-5">
                   <div>
                     <div className="flex flex-wrap items-center gap-2 mb-2">
-                      <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-[#EAEDFF] text-[#3525CD] font-mono text-[11px] font-semibold">
+                      <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-[#EAECFF] text-[#4F46E5] font-mono text-[11px] font-semibold">
                         <Brain className="h-3.5 w-3.5" /> AUDIT REPORT
                       </span>
                       {diagnosticResult.isGeminiPowered ? (
@@ -877,12 +831,12 @@ export default function AIResumeAnalyserPage() {
                             : "✨ Google Gemini AI"}
                         </span>
                       ) : (
-                        <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-[#F1F5F9] text-[#475569] border border-[#E2E8F0] font-mono text-[11px] font-medium">
+                        <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-[#EFECE6] text-[#52525B] border border-[#E6E4DE] font-mono text-[11px] font-medium">
                           ⚡ PMKVY NOS Local Engine
                         </span>
                       )}
                       {diagnosticResult.jobSourceInfo?.fetchStatus === "fetched" && (
-                        <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-[#EAEDFF] text-[#3525CD] border border-[#C7C4D8] font-mono text-[11px] font-medium">
+                        <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-[#EAECFF] text-[#4F46E5] border border-[#C7D2FE] font-mono text-[11px] font-medium">
                           🌐 Live Job Page Extracted
                         </span>
                       )}
@@ -892,19 +846,19 @@ export default function AIResumeAnalyserPage() {
                         </span>
                       )}
                     </div>
-                    <h2 className="font-display text-xl sm:text-2xl font-semibold text-[#0F172A] tracking-tight">
+                    <h2 className="font-display text-xl sm:text-2xl font-semibold text-[#111113] tracking-tight">
                       Competency Benchmark Overview
                     </h2>
-                    <div className="text-[13px] text-[#64748B] mt-1">
+                    <div className="text-[13px] text-[#52525B] mt-1">
                       Evaluated against:{" "}
-                      <strong className="text-[#0F172A] font-semibold">{diagnosticResult.targetJobTitle}</strong> •{" "}
+                      <strong className="text-[#111113] font-semibold">{diagnosticResult.targetJobTitle}</strong> •{" "}
                       <span className="font-mono text-[#4F46E5]">{diagnosticResult.targetJobCode}</span> ({diagnosticResult.targetNSQF})
                     </div>
                   </div>
 
                   <div className="flex items-center gap-2 flex-wrap">
                     <Button variant="outline" size="sm" onClick={() => window.print()}>
-                      <Download className="h-3.5 w-3.5 text-[#64748B]" />
+                      <Download className="h-3.5 w-3.5 text-[#52525B]" />
                       <span>Export PDF</span>
                     </Button>
                     <Button
@@ -928,36 +882,36 @@ export default function AIResumeAnalyserPage() {
                   </div>
                 </div>
 
-                {/* Metric Cards Bento */}
+                {/* Metric Cards Bento (Ref 3 Radial + Soft Tinted Metric Strip) */}
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4">
-                  <div className="lg:col-span-2 bg-[#F8FAFC] border border-[#E2E8F0] rounded-xl p-4 flex items-center gap-4">
-                    <div className="relative w-20 h-20 shrink-0 flex items-center justify-center">
-                      <svg className="w-full h-full transform -rotate-90" viewBox="0 0 36 36">
+                  <div className="lg:col-span-2 bento-subtile p-5 flex items-center gap-4">
+                    <div className="relative w-22 h-22 shrink-0 flex items-center justify-center">
+                      <svg className="w-full h-full -rotate-90" viewBox="0 0 36 36">
                         <path
-                          className="text-[#E2E8F0]"
+                          className="text-[#E5E7EB]"
                           d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831"
                           fill="none"
                           stroke="currentColor"
-                          strokeWidth="3.5"
+                          strokeWidth="3.2"
                         />
                         <path
                           className={
                             diagnosticResult.matchPercentage >= 75
-                              ? "text-[#10B981]"
+                              ? "text-[#86BA6C]"
                               : diagnosticResult.matchPercentage >= 50
                               ? "text-[#4F46E5]"
-                              : "text-[#BA1A1A]"
+                              : "text-[#DF6D51]"
                           }
                           d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831"
                           fill="none"
                           stroke="currentColor"
                           strokeDasharray={`${diagnosticResult.matchPercentage}, 100`}
                           strokeLinecap="round"
-                          strokeWidth="3.8"
+                          strokeWidth="3.6"
                         />
                       </svg>
                       <div className="absolute inset-0 flex items-center justify-center">
-                        <span className="font-mono text-lg font-bold text-[#0F172A]">
+                        <span className="font-display text-lg font-bold text-[#111113]">
                           {diagnosticResult.matchPercentage}%
                         </span>
                       </div>
@@ -965,49 +919,49 @@ export default function AIResumeAnalyserPage() {
 
                     <div>
                       <span
-                        className={`inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-mono font-semibold mb-1 border ${
+                        className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-[11px] font-mono font-semibold mb-1.5 ${
                           diagnosticResult.matchPercentage >= 75
-                            ? "bg-[#ECFDF5] text-[#065F46] border-[#A7F3D0]"
+                            ? "bg-[#ECFDF5] text-[#065F46]"
                             : diagnosticResult.matchPercentage >= 50
-                            ? "bg-[#FFFBEB] text-[#92400E] border-[#FDE68A]"
-                            : "bg-[#FEF2F2] text-[#991B1B] border-[#FECACA]"
+                            ? "bg-[#FFFBEB] text-[#92400E]"
+                            : "bg-[#FEF2F2] text-[#991B1B]"
                         }`}
                       >
                         {diagnosticResult.readinessGrade}
                       </span>
-                      <h3 className="font-display text-[14px] font-semibold text-[#0F172A]">
+                      <h3 className="font-display text-[15px] font-semibold text-[#111113]">
                         {diagnosticResult.advisory.headline}
                       </h3>
-                      <p className="text-[12px] text-[#64748B] mt-0.5 leading-relaxed">
+                      <p className="text-[12px] text-[#52525B] mt-0.5 leading-relaxed">
                         {diagnosticResult.advisory.message}
                       </p>
                     </div>
                   </div>
 
-                  <div className="bg-[#F8FAFC] border border-[#E2E8F0] rounded-xl p-4 flex flex-col justify-between">
-                    <span className="font-mono text-[11px] text-[#64748B] uppercase">Total Evaluated</span>
+                  <div className="bento-subtile p-5 flex flex-col justify-between">
+                    <span className="font-mono text-[10.5px] font-semibold text-[#71717A] uppercase">Total Evaluated</span>
                     <div>
-                      <div className="font-mono text-2xl font-bold text-[#0F172A]">
+                      <div className="font-display text-2xl font-bold text-[#111113]">
                         {diagnosticResult.summaryMetrics.totalEvaluated}
                       </div>
-                      <div className="text-[12px] text-[#64748B]">NOS Competency Units</div>
+                      <div className="text-[11.5px] text-[#71717A]">NOS Competency Units</div>
                     </div>
-                    <div className="w-full bg-[#E2E8F0] h-1.5 rounded-full">
-                      <div className="bg-[#0F172A] h-1.5 rounded-full w-full" />
+                    <div className="w-full bg-[#E5E7EB] h-1.5 rounded-full">
+                      <div className="bg-[#111113] h-1.5 rounded-full w-full" />
                     </div>
                   </div>
 
-                  <div className="bg-[#F8FAFC] border border-[#E2E8F0] rounded-xl p-4 flex flex-col justify-between">
-                    <span className="font-mono text-[11px] text-[#065F46] uppercase">Verified Match</span>
+                  <div className="bento-subtile p-5 flex flex-col justify-between">
+                    <span className="font-mono text-[10.5px] font-semibold text-[#065F46] uppercase">Verified Match</span>
                     <div>
-                      <div className="font-mono text-2xl font-bold text-[#10B981]">
+                      <div className="font-display text-2xl font-bold text-[#10B981]">
                         {diagnosticResult.summaryMetrics.matchedVerified}
                       </div>
-                      <div className="text-[12px] text-[#64748B]">Criteria Met</div>
+                      <div className="text-[11.5px] text-[#71717A]">Criteria Met</div>
                     </div>
-                    <div className="w-full bg-[#E2E8F0] h-1.5 rounded-full">
+                    <div className="w-full bg-[#E5E7EB] h-1.5 rounded-full">
                       <div
-                        className="bg-[#10B981] h-1.5 rounded-full"
+                        className="bg-[#86BA6C] h-1.5 rounded-full"
                         style={{
                           width: `${
                             diagnosticResult.summaryMetrics.totalEvaluated > 0
@@ -1021,17 +975,17 @@ export default function AIResumeAnalyserPage() {
                     </div>
                   </div>
 
-                  <div className="bg-[#F8FAFC] border border-[#E2E8F0] rounded-xl p-4 flex flex-col justify-between">
-                    <span className="font-mono text-[11px] text-[#991B1B] uppercase">Critical Gaps</span>
+                  <div className="bento-subtile p-5 flex flex-col justify-between">
+                    <span className="font-mono text-[10.5px] font-semibold text-[#991B1B] uppercase">Critical Gaps</span>
                     <div>
-                      <div className="font-mono text-2xl font-bold text-[#BA1A1A]">
+                      <div className="font-display text-2xl font-bold text-[#BA1A1A]">
                         {diagnosticResult.summaryMetrics.criticalGaps}
                       </div>
-                      <div className="text-[12px] text-[#64748B]">Remediation Required</div>
+                      <div className="text-[11.5px] text-[#71717A]">Remediation Required</div>
                     </div>
-                    <div className="w-full bg-[#E2E8F0] h-1.5 rounded-full">
+                    <div className="w-full bg-[#E5E7EB] h-1.5 rounded-full">
                       <div
-                        className="bg-[#BA1A1A] h-1.5 rounded-full"
+                        className="bg-[#DF6D51] h-1.5 rounded-full"
                         style={{
                           width: `${
                             diagnosticResult.summaryMetrics.totalEvaluated > 0
@@ -1051,10 +1005,10 @@ export default function AIResumeAnalyserPage() {
               <div className="space-y-3.5">
                 <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
                   <div>
-                    <h3 className="font-display text-[16px] font-semibold text-[#0F172A]">
+                    <h3 className="font-display text-[16px] font-semibold text-[#111113]">
                       Competency &amp; NOS Gap Matrix
                     </h3>
-                    <p className="text-[12px] text-[#64748B]">
+                    <p className="text-[12px] text-[#52525B]">
                       Cross-referenced evidence snippets from candidate resume
                     </p>
                   </div>
@@ -1066,17 +1020,17 @@ export default function AIResumeAnalyserPage() {
                         placeholder="Filter skills or NOS..."
                         value={searchQuery}
                         onChange={(e) => setSearchQuery(e.target.value)}
-                        className="h-8 text-[12px] bg-white border border-[#CBD5E1] rounded-lg pl-8 pr-3 text-[#0F172A] focus:outline-none focus:border-[#4F46E5]"
+                        className="h-8 text-[12px] bg-white border border-[#D5D2CA] rounded-lg pl-8 pr-3 text-[#111113] focus:outline-none focus:border-[#4F46E5]"
                       />
-                      <Search className="h-3.5 w-3.5 text-[#64748B] absolute left-2.5 top-2.5" />
+                      <Search className="h-3.5 w-3.5 text-[#52525B] absolute left-2.5 top-2.5" />
                     </div>
 
-                    <div className="inline-flex p-0.5 bg-[#F1F5F9] rounded-lg border border-[#E2E8F0] text-[12px]">
+                    <div className="inline-flex p-0.5 bg-[#EFECE6] rounded-lg border border-[#E6E4DE] text-[12px]">
                       <button
                         type="button"
                         onClick={() => setActiveMatrixTab("ALL")}
                         className={`px-2.5 py-1 rounded-md font-medium transition-all cursor-pointer ${
-                          activeMatrixTab === "ALL" ? "bg-white text-[#0F172A] shadow-xs" : "text-[#64748B]"
+                          activeMatrixTab === "ALL" ? "bg-white text-[#111113] shadow-xs" : "text-[#52525B]"
                         }`}
                       >
                         All ({diagnosticResult.skillsMatrix.length})
@@ -1085,7 +1039,7 @@ export default function AIResumeAnalyserPage() {
                         type="button"
                         onClick={() => setActiveMatrixTab("MATCHED")}
                         className={`px-2.5 py-1 rounded-md font-medium transition-all cursor-pointer ${
-                          activeMatrixTab === "MATCHED" ? "bg-white text-[#065F46] shadow-xs" : "text-[#64748B]"
+                          activeMatrixTab === "MATCHED" ? "bg-white text-[#065F46] shadow-xs" : "text-[#52525B]"
                         }`}
                       >
                         Matched ({diagnosticResult.summaryMetrics.matchedVerified})
@@ -1094,7 +1048,7 @@ export default function AIResumeAnalyserPage() {
                         type="button"
                         onClick={() => setActiveMatrixTab("CRITICAL")}
                         className={`px-2.5 py-1 rounded-md font-medium transition-all cursor-pointer ${
-                          activeMatrixTab === "CRITICAL" ? "bg-white text-[#991B1B] shadow-xs" : "text-[#64748B]"
+                          activeMatrixTab === "CRITICAL" ? "bg-white text-[#991B1B] shadow-xs" : "text-[#52525B]"
                         }`}
                       >
                         Gaps ({diagnosticResult.summaryMetrics.criticalGaps})
@@ -1103,10 +1057,10 @@ export default function AIResumeAnalyserPage() {
                   </div>
                 </div>
 
-                <div className="overflow-x-auto border border-[#E2E8F0] rounded-xl">
+                <div className="overflow-x-auto border border-[#E6E4DE] rounded-xl">
                   <table className="w-full text-left border-collapse text-[13px]">
                     <thead>
-                      <tr className="bg-[#F8FAFC] border-b border-[#E2E8F0] font-mono text-[11px] font-semibold uppercase tracking-wider text-[#64748B]">
+                      <tr className="bg-[#F6F5F0] border-b border-[#E6E4DE] font-mono text-[11px] font-semibold uppercase tracking-wider text-[#52525B]">
                         <th className="py-2.5 px-4">NOS Code</th>
                         <th className="py-2.5 px-4">Competency Unit</th>
                         <th className="py-2.5 px-4">Status</th>
@@ -1114,22 +1068,22 @@ export default function AIResumeAnalyserPage() {
                         <th className="py-2.5 px-4 text-right">Action</th>
                       </tr>
                     </thead>
-                    <tbody className="divide-y divide-[#E2E8F0] bg-white">
+                    <tbody className="divide-y divide-[#E6E4DE] bg-white">
                       {filteredSkills.length === 0 ? (
                         <tr>
-                          <td colSpan={5} className="py-8 text-center text-[#64748B]">
+                          <td colSpan={5} className="py-8 text-center text-[#52525B]">
                             No competencies matching filter.
                           </td>
                         </tr>
                       ) : (
                         filteredSkills.map((skill, idx) => (
-                          <tr key={idx} className="hover:bg-[#F8FAFC] transition-colors">
+                          <tr key={idx} className="hover:bg-[#F6F5F0] transition-colors">
                             <td className="py-3.5 px-4 font-mono text-[12px] font-medium text-[#4F46E5] whitespace-nowrap">
                               {skill.nosCode}
                             </td>
                             <td className="py-3.5 px-4">
-                              <div className="font-semibold text-[#0F172A]">{skill.skillName}</div>
-                              <div className="font-mono text-[11px] text-[#64748B]">
+                              <div className="font-semibold text-[#111113]">{skill.skillName}</div>
+                              <div className="font-mono text-[11px] text-[#52525B]">
                                 Req: {skill.requiredProficiency}% • {skill.importance}
                               </div>
                             </td>
@@ -1156,7 +1110,7 @@ export default function AIResumeAnalyserPage() {
                               </span>
                             </td>
                             <td className="py-3.5 px-4 max-w-md">
-                              <div className="p-2 rounded-lg bg-[#F8FAFC] border border-[#E2E8F0] font-mono text-[11px] leading-relaxed text-[#334155]">
+                              <div className="p-2 rounded-lg bg-[#F6F5F0] border border-[#E6E4DE] font-mono text-[11px] leading-relaxed text-[#27272A]">
                                 &quot;{skill.resumeEvidence}&quot;
                               </div>
                             </td>
@@ -1187,42 +1141,61 @@ export default function AIResumeAnalyserPage() {
               </div>
 
               {/* Bridge Courses */}
-              <div className="pt-5 border-t border-[#E2E8F0] space-y-4">
+              <div className="pt-5 border-t border-[#E6E4DE] space-y-4">
                 <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
                   <div>
-                    <h3 className="font-display text-[16px] font-semibold text-[#0F172A] flex items-center gap-2">
+                    <h3 className="font-display text-[16px] font-semibold text-[#111113] flex items-center gap-2">
                       <BookOpen className="h-4 w-4 text-[#4F46E5]" />
                       Recommended PMKVY 4.0 Bridge Courses
                     </h3>
-                    <p className="text-[12px] text-[#64748B]">
+                    <p className="text-[12px] text-[#52525B]">
                       Targeted NSDC training matched to your missing competencies
                     </p>
                   </div>
                   <Badge variant="success">100% Govt Subsidized</Badge>
                 </div>
 
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                  {diagnosticResult.recommendedCourses.map((course) => (
-                    <Card key={course.id} className="prepp-card-interactive flex flex-col justify-between">
-                      <CardHeader className="p-4 pb-2">
-                        <div className="flex items-center justify-between mb-1">
-                          <Badge variant="secondary">{course.category}</Badge>
-                          <span className="font-mono text-[11px] text-[#64748B]">{course.duration}</span>
-                        </div>
-                        <CardTitle className="text-[15px] leading-snug">{course.name}</CardTitle>
-                        <CardDescription className="text-[12px]">{course.provider}</CardDescription>
-                      </CardHeader>
-
-                      <CardContent className="p-4 pt-2 space-y-3">
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
+                  {diagnosticResult.recommendedCourses.map((course, cIdx) => {
+                    const mono = (course.provider || course.category || "P").trim().charAt(0).toUpperCase();
+                    const pillColor = [
+                      "bg-[#111113] text-white",
+                      "bg-[#EEF4FF] text-[#2563EB]",
+                      "bg-[#ECFDF5] text-[#059669]",
+                    ][cIdx % 3];
+                    return (
+                      <div
+                        key={course.id}
+                        className="prepp-card-interactive p-6 flex flex-col justify-between"
+                      >
                         <div>
-                          <div className="font-mono text-[10px] font-semibold text-[#64748B] uppercase tracking-wider mb-1">
-                            Bridges Missing Skills:
+                          <div className="flex items-center justify-between gap-2">
+                            <div className={`h-10 w-10 rounded-full flex items-center justify-center font-display text-[14px] font-bold ${pillColor}`}>
+                              {mono}
+                            </div>
+                            <span className="rounded-lg border border-[#A7F3D0] bg-[#ECFDF5] px-2.5 py-0.5 text-[11px] font-medium text-[#065F46]">
+                              100% Free
+                            </span>
                           </div>
-                          <div className="flex flex-wrap gap-1">
-                            {course.skillsAddressed.map((sk, i) => (
+
+                          <div className="mt-4">
+                            <div className="flex items-center gap-1.5 text-[11.5px]">
+                              <span className="font-semibold text-[#111113] truncate max-w-[140px]">
+                                {course.provider}
+                              </span>
+                              <span className="text-[#9CA3AF]">•</span>
+                              <span className="text-[#9CA3AF] truncate">{course.category}</span>
+                            </div>
+                            <h4 className="mt-1 font-display text-[17px] font-semibold text-[#111113] leading-snug line-clamp-2">
+                              {course.name}
+                            </h4>
+                          </div>
+
+                          <div className="mt-3 flex flex-wrap gap-1.5">
+                            {(course.skillsAddressed || []).slice(0, 3).map((sk, i) => (
                               <span
                                 key={i}
-                                className="px-2 py-0.5 rounded-full text-[10px] font-mono bg-[#FEF2F2] text-[#991B1B] border border-[#FECACA]"
+                                className="bento-chip bg-[#FEF2F2] text-[#991B1B]"
                               >
                                 {sk}
                               </span>
@@ -1230,20 +1203,27 @@ export default function AIResumeAnalyserPage() {
                           </div>
                         </div>
 
-                        <div className="p-2.5 rounded-lg bg-[#F8FAFC] border border-[#E2E8F0] text-[12px] text-[#334155] space-y-0.5">
-                          <div>✓ {course.subsidyStatus}</div>
-                          <div>✓ {course.stipend}</div>
-                        </div>
-                      </CardContent>
+                        <div className="mt-6 pt-4 border-t border-[#F0F1F3] flex items-center justify-between gap-2">
+                          <div className="min-w-0">
+                            <div className="font-display text-[14px] font-bold text-[#111113] truncate" title={course.stipend}>
+                              ₹0 Tuition • Stipend
+                            </div>
+                            <div className="text-[11px] text-[#9CA3AF] truncate">
+                              {course.duration} · PMKVY 4.0
+                            </div>
+                          </div>
 
-                      <CardFooter className="p-4 pt-0">
-                        <Button size="sm" onClick={() => setEnrollModalCourse(course)} className="w-full">
-                          <span>Enroll via Skill India</span>
-                          <ArrowRight className="h-3.5 w-3.5" />
-                        </Button>
-                      </CardFooter>
-                    </Card>
-                  ))}
+                          <button
+                            type="button"
+                            onClick={() => setEnrollModalCourse(course)}
+                            className="shrink-0 rounded-xl bg-[#111113] hover:bg-[#27272A] px-3.5 py-2 text-[12px] font-medium text-white transition-colors cursor-pointer"
+                          >
+                            Enroll now
+                          </button>
+                        </div>
+                      </div>
+                    );
+                  })}
                 </div>
               </div>
             </section>
@@ -1251,49 +1231,49 @@ export default function AIResumeAnalyserPage() {
 
           {/* Direct Enrollment Modal */}
           {enrollModalCourse && (
-            <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-[#0F172A]/40 backdrop-blur-[4px]">
-              <div className="bg-white rounded-xl border border-[#CBD5E1] shadow-[0_12px_32px_-4px_rgba(15,23,42,0.16)] max-w-lg w-full p-6 space-y-4 animate-fade-in">
-                <div className="flex items-start justify-between border-b border-[#E2E8F0] pb-3.5">
+            <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-[#111113]/40 backdrop-blur-[4px]">
+              <div className="bg-white rounded-xl border border-[#D5D2CA] shadow-[0_12px_32px_-4px_rgba(15,23,42,0.16)] max-w-lg w-full p-6 space-y-4 animate-fade-in">
+                <div className="flex items-start justify-between border-b border-[#E6E4DE] pb-3.5">
                   <div>
                     <Badge variant="secondary" className="mb-1">PMKVY 4.0 Direct Enrollment</Badge>
-                    <h3 className="font-display text-[17px] font-semibold text-[#0F172A]">{enrollModalCourse.name}</h3>
-                    <p className="text-[12px] text-[#64748B]">{enrollModalCourse.provider}</p>
+                    <h3 className="font-display text-[17px] font-semibold text-[#111113]">{enrollModalCourse.name}</h3>
+                    <p className="text-[12px] text-[#52525B]">{enrollModalCourse.provider}</p>
                   </div>
                   <button
                     type="button"
                     onClick={() => setEnrollModalCourse(null)}
-                    className="p-1 text-[#64748B] hover:text-[#0F172A] cursor-pointer"
+                    className="p-1 text-[#52525B] hover:text-[#111113] cursor-pointer"
                   >
                     ✕
                   </button>
                 </div>
 
-                <div className="space-y-3 text-[13px] text-[#0F172A]">
-                  <div className="p-3.5 bg-[#F8FAFC] rounded-lg border border-[#E2E8F0] space-y-2">
+                <div className="space-y-3 text-[13px] text-[#111113]">
+                  <div className="p-3.5 bg-[#F6F5F0] rounded-lg border border-[#E6E4DE] space-y-2">
                     <div className="flex justify-between">
-                      <span className="text-[#64748B]">Accredited Body:</span>
+                      <span className="text-[#52525B]">Accredited Body:</span>
                       <span className="font-mono font-medium">NSDC</span>
                     </div>
                     <div className="flex justify-between">
-                      <span className="text-[#64748B]">Duration:</span>
+                      <span className="text-[#52525B]">Duration:</span>
                       <span className="font-mono font-medium">{enrollModalCourse.duration}</span>
                     </div>
                     <div className="flex justify-between">
-                      <span className="text-[#64748B]">Tuition Fee:</span>
+                      <span className="text-[#52525B]">Tuition Fee:</span>
                       <span className="font-mono font-medium text-[#065F46]">100% Free Subsidized</span>
                     </div>
                     <div className="flex justify-between">
-                      <span className="text-[#64748B]">Stipend Eligibility:</span>
+                      <span className="text-[#52525B]">Stipend Eligibility:</span>
                       <span className="font-mono font-medium text-[#065F46]">{enrollModalCourse.stipend}</span>
                     </div>
                   </div>
 
-                  <p className="text-[12px] text-[#64748B] leading-relaxed">
+                  <p className="text-[12px] text-[#52525B] leading-relaxed">
                     Your candidate profile can be linked directly to the Skill India Digital portal for batch registration.
                   </p>
                 </div>
 
-                <div className="flex items-center justify-end gap-2.5 pt-3 border-t border-[#E2E8F0]">
+                <div className="flex items-center justify-end gap-2.5 pt-3 border-t border-[#E6E4DE]">
                   <Button variant="outline" size="sm" onClick={() => setEnrollModalCourse(null)}>
                     Cancel
                   </Button>
@@ -1310,6 +1290,21 @@ export default function AIResumeAnalyserPage() {
             </div>
           )}
         </div>
-      </DashboardLayout>
+    );
+}
+
+export default function AIResumeAnalyserPage() {
+    return (
+        <DashboardLayout>
+            <Suspense
+                fallback={
+                    <div className="flex h-96 items-center justify-center font-mono text-[12px] text-[#52525B]">
+                        Loading AI Resume Analyser...
+                    </div>
+                }
+            >
+                <ResumeAnalyserContent />
+            </Suspense>
+        </DashboardLayout>
     );
 }

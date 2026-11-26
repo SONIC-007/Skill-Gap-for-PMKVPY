@@ -3,6 +3,7 @@ import { Router } from "express";
 import mongoose from "mongoose";
 import { connectToDatabase } from "../config/db.js";
 import { requireAuth } from "../middleware/auth.js";
+import { profileSchema } from "../utils/validations.js";
 import User from "../models/User.js";
 import CandidateProfile from "../models/CandidateProfile.js";
 
@@ -44,6 +45,12 @@ router.put("/", requireAuth, async (req, res) => {
             return res.status(400).json({ error: "Invalid user ID" });
         }
 
+        const validation = profileSchema.safeParse(req.body || {});
+        if (!validation.success) {
+            const msg = validation.error.issues?.[0]?.message || "Invalid profile input data";
+            return res.status(400).json({ error: msg });
+        }
+
         const {
             name,
             phone,
@@ -53,15 +60,24 @@ router.put("/", requireAuth, async (req, res) => {
             desiredCareerField,
             targetJobRole,
             bio,
-        } = req.body || {};
+        } = validation.data;
 
-        if (name && String(name).trim().length >= 2) {
-            await User.findByIdAndUpdate(userId, { name: String(name).trim() });
+        if (name) {
+            await User.findByIdAndUpdate(userId, { name });
         }
+
+        const updatePayload = {};
+        if (phone !== undefined) updatePayload.phone = phone || null;
+        if (education !== undefined) updatePayload.education = education || null;
+        if (experience !== undefined) updatePayload.experience = experience || null;
+        if (location !== undefined) updatePayload.location = location || null;
+        if (desiredCareerField !== undefined) updatePayload.desiredCareerField = desiredCareerField || null;
+        if (targetJobRole !== undefined) updatePayload.targetJobRole = targetJobRole || null;
+        if (bio !== undefined) updatePayload.bio = bio || null;
 
         const updatedProfile = await CandidateProfile.findOneAndUpdate(
             { userId },
-            { phone, education, experience, location, desiredCareerField, targetJobRole, bio },
+            updatePayload,
             { upsert: true, new: true }
         ).lean();
 

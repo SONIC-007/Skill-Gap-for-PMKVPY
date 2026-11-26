@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback } from "react";
 import Link from "next/link";
 import { apiFetch } from "@/lib/api";
 import { DashboardLayout } from "@/components/layout/dashboard-layout";
+import { EditorialPageHeader } from "@/components/story/EditorialPageHeader";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -21,7 +22,7 @@ import {
 const DIFFICULTY_STYLES = {
   BEGINNER: "border-[#A7F3D0] bg-[#ECFDF5] text-[#065F46]",
   INTERMEDIATE: "border-[#FDE68A] bg-[#FFFBEB] text-[#92400E]",
-  ADVANCED: "border-[#C7C4D8] bg-[#F2F3FF] text-[#3525CD]",
+  ADVANCED: "border-[#C7D2FE] bg-[#EEF0FF] text-[#4F46E5]",
 };
 
 export default function AdminCoursesPage() {
@@ -32,6 +33,7 @@ export default function AdminCoursesPage() {
   const [showAddModal, setShowAddModal] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [deletingId, setDeletingId] = useState(null);
+  const [errorMsg, setErrorMsg] = useState("");
   const [formData, setFormData] = useState({
     name: "",
     description: "",
@@ -42,35 +44,61 @@ export default function AdminCoursesPage() {
     category: "Web Development",
   });
 
-  const fetchCourses = useCallback(async () => {
-    setLoading(true);
+  const reloadCourses = useCallback(async () => {
     try {
       const res = await apiFetch("/api/admin/courses");
+      const data = await res.json().catch(() => ({}));
       if (res.ok) {
-        const data = await res.json();
         setCourses(data.courses || []);
+        setErrorMsg("");
+      } else {
+        setErrorMsg(data.error || "Failed to fetch courses.");
       }
     } catch (error) {
       console.error("Failed to fetch admin courses:", error);
+      setErrorMsg("Network error while loading courses.");
     } finally {
       setLoading(false);
     }
   }, []);
 
   useEffect(() => {
-    fetchCourses();
-  }, [fetchCourses]);
+    let active = true;
+    (async () => {
+      try {
+        const res = await apiFetch("/api/admin/courses");
+        const data = await res.json().catch(() => ({}));
+        if (!active) return;
+        if (res.ok) {
+          setCourses(data.courses || []);
+        } else {
+          setErrorMsg(data.error || "Failed to load courses.");
+        }
+      } catch (error) {
+        if (!active) return;
+        console.error("Failed to fetch admin courses:", error);
+        setErrorMsg("Network error while loading courses.");
+      } finally {
+        if (active) setLoading(false);
+      }
+    })();
+    return () => {
+      active = false;
+    };
+  }, []);
 
   const handleAddCourse = async (e) => {
     e.preventDefault();
     if (!formData.name.trim()) return;
     setSubmitting(true);
+    setErrorMsg("");
     try {
       const res = await apiFetch("/api/admin/courses", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(formData),
       });
+      const data = await res.json().catch(() => ({}));
       if (res.ok) {
         setFormData({
           name: "",
@@ -82,10 +110,13 @@ export default function AdminCoursesPage() {
           category: "Web Development",
         });
         setShowAddModal(false);
-        await fetchCourses();
+        await reloadCourses();
+      } else {
+        setErrorMsg(data.error || "Failed to add course.");
       }
     } catch (error) {
       console.error("Failed to add course:", error);
+      setErrorMsg("Network error while adding course.");
     } finally {
       setSubmitting(false);
     }
@@ -93,16 +124,21 @@ export default function AdminCoursesPage() {
 
   const handleDeleteCourse = async (id) => {
     setDeletingId(id);
+    setErrorMsg("");
     try {
       const res = await apiFetch(
         `/api/admin/courses?id=${encodeURIComponent(id)}`,
         { method: "DELETE" }
       );
+      const data = await res.json().catch(() => ({}));
       if (res.ok) {
         setCourses((prev) => prev.filter((c) => c.id !== id));
+      } else {
+        setErrorMsg(data.error || "Failed to delete course.");
       }
     } catch (error) {
       console.error("Failed to delete course:", error);
+      setErrorMsg("Network error while deleting course.");
     } finally {
       setDeletingId(null);
     }
@@ -123,43 +159,43 @@ export default function AdminCoursesPage() {
   return (
     <DashboardLayout>
       <div className="space-y-6">
-        {/* Header */}
-        <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between border-b border-[#E2E8F0] pb-5">
-          <div>
-            <div className="flex items-center gap-2 font-mono text-[11px] font-semibold uppercase tracking-[0.06em] text-[#64748B]">
-              <Link href="/admin" className="hover:text-[#4F46E5]">
-                ADMIN
+        {/* Editorial Header */}
+        <EditorialPageHeader
+          variant="light"
+          eyebrow="ADMIN / PMKVY COURSES"
+          title="Manage PMKVY"
+          italicAccent="Course Registry."
+          description="Curate accredited Skill India training modules and monitor candidate enrollment volume."
+          rightSlot={
+            <div className="flex items-center gap-2">
+              <Link href="/admin">
+                <Button variant="outline" size="sm">
+                  <ArrowLeft className="mr-1.5 h-3.5 w-3.5" />
+                  Console
+                </Button>
               </Link>
-              <span>/</span>
-              <span className="text-[#4F46E5]">PMKVY COURSES</span>
-            </div>
-            <h1 className="mt-1.5 font-display text-2xl sm:text-[28px] font-bold tracking-[-0.025em] text-[#0F172A]">
-              Manage PMKVY Course Registry
-            </h1>
-            <p className="mt-1 text-[14px] text-[#475569]">
-              Curate accredited Skill India training modules and monitor candidate enrollment volume.
-            </p>
-          </div>
-
-          <div className="flex items-center gap-2.5">
-            <Link href="/admin">
-              <Button variant="outline" size="sm">
-                <ArrowLeft className="mr-1.5 h-3.5 w-3.5" />
-                Console
+              <Button size="sm" onClick={() => setShowAddModal(true)}>
+                <Plus className="mr-1.5 h-3.5 w-3.5" />
+                Add Course
               </Button>
-            </Link>
-            <Button size="sm" onClick={() => setShowAddModal(true)}>
-              <Plus className="mr-1.5 h-3.5 w-3.5" />
-              Add Course
-            </Button>
-          </div>
-        </div>
+            </div>
+          }
+        />
 
         {/* Filters */}
+        {errorMsg && (
+          <div className="flex items-center justify-between gap-2 rounded-xl border border-[#FECACA] bg-[#FEF2F2] px-4 py-3 text-[13px] font-medium text-[#991B1B]">
+            <span>{errorMsg}</span>
+            <button type="button" onClick={() => setErrorMsg("")} className="p-1 hover:opacity-75">
+              <X className="h-3.5 w-3.5" />
+            </button>
+          </div>
+        )}
+
         <div className="prepp-card p-4">
           <div className="grid grid-cols-1 gap-3 md:grid-cols-12 md:items-center">
             <div className="relative md:col-span-7">
-              <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[#64748B]" />
+              <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[#52525B]" />
               <Input
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
@@ -173,7 +209,7 @@ export default function AdminCoursesPage() {
                 value={difficultyFilter}
                 onChange={(e) => setDifficultyFilter(e.target.value)}
                 aria-label="Filter courses by difficulty"
-                className="h-9 w-full rounded-lg border border-[#CBD5E1] bg-white px-3 text-[13px] text-[#0F172A] focus:border-[#4F46E5] focus:outline-none"
+                className="h-9 w-full rounded-lg border border-[#D5D2CA] bg-white px-3 text-[13px] text-[#111113] focus:border-[#4F46E5] focus:outline-none"
               >
                 <option value="ALL">All Difficulty Levels</option>
                 <option value="BEGINNER">BEGINNER</option>
@@ -182,7 +218,7 @@ export default function AdminCoursesPage() {
               </select>
             </div>
 
-            <div className="md:col-span-2 text-right font-mono text-[12px] text-[#64748B]">
+            <div className="md:col-span-2 text-right font-mono text-[12px] text-[#52525B]">
               {filteredCourses.length} Courses
             </div>
           </div>
@@ -193,7 +229,7 @@ export default function AdminCoursesPage() {
           <div className="overflow-x-auto">
             <table className="w-full text-left border-collapse">
               <thead>
-                <tr className="border-y border-[#E2E8F0] bg-[#F8FAFC] font-mono text-[11px] font-semibold uppercase tracking-wider text-[#64748B]">
+                <tr className="border-y border-[#E6E4DE] bg-[#F6F5F0] font-mono text-[11px] font-semibold uppercase tracking-wider text-[#52525B]">
                   <th className="px-6 py-3">Course Name</th>
                   <th className="px-6 py-3">Category</th>
                   <th className="px-6 py-3">Provider</th>
@@ -203,16 +239,16 @@ export default function AdminCoursesPage() {
                   <th className="px-6 py-3 text-right">Actions</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-[#E2E8F0] text-[13px]">
+              <tbody className="divide-y divide-[#E6E4DE] text-[13px]">
                 {loading ? (
                   <tr>
-                    <td colSpan={7} className="px-6 py-10 text-center text-[#64748B]">
+                    <td colSpan={7} className="px-6 py-10 text-center text-[#52525B]">
                       Loading courses catalog...
                     </td>
                   </tr>
                 ) : filteredCourses.length === 0 ? (
                   <tr>
-                    <td colSpan={7} className="px-6 py-10 text-center text-[#64748B]">
+                    <td colSpan={7} className="px-6 py-10 text-center text-[#52525B]">
                       No courses match your filters.
                     </td>
                   </tr>
@@ -220,40 +256,40 @@ export default function AdminCoursesPage() {
                   filteredCourses.map((course) => (
                     <tr
                       key={course.id}
-                      className="hover:bg-[#F8FAFC] transition-colors"
+                      className="hover:bg-[#F6F5F0] transition-colors"
                     >
                       <td className="px-6 py-3.5">
-                        <div className="flex items-center gap-2 font-semibold text-[#0F172A]">
+                        <div className="flex items-center gap-2 font-semibold text-[#111113]">
                           <BookOpen className="h-3.5 w-3.5 shrink-0 text-[#4F46E5]" />
                           <span>{course.name}</span>
                         </div>
-                        <div className="mt-0.5 font-mono text-[11px] text-[#64748B]">
+                        <div className="mt-0.5 font-mono text-[11px] text-[#52525B]">
                           Eligibility: {course.eligibility || "Open"}
                         </div>
                       </td>
-                      <td className="px-6 py-3.5 font-mono text-[12px] text-[#475569] whitespace-nowrap">
+                      <td className="px-6 py-3.5 font-mono text-[12px] text-[#52525B] whitespace-nowrap">
                         {course.category}
                       </td>
-                      <td className="px-6 py-3.5 text-[#475569]">
+                      <td className="px-6 py-3.5 text-[#52525B]">
                         {course.provider}
                       </td>
                       <td className="px-6 py-3.5 whitespace-nowrap">
                         <span
                           className={`inline-flex whitespace-nowrap rounded border px-2 py-0.5 font-mono text-[10px] font-semibold uppercase ${
                             DIFFICULTY_STYLES[course.difficulty] ||
-                            "border-[#CBD5E1] bg-[#F1F5F9] text-[#475569]"
+                            "border-[#D5D2CA] bg-[#EFECE6] text-[#52525B]"
                           }`}
                         >
                           {course.difficulty}
                         </span>
                       </td>
-                      <td className="px-6 py-3.5 font-mono text-[12px] text-[#475569] whitespace-nowrap">
+                      <td className="px-6 py-3.5 font-mono text-[12px] text-[#52525B] whitespace-nowrap">
                         <span className="inline-flex items-center gap-1 whitespace-nowrap">
-                          <Clock className="h-3 w-3 shrink-0 text-[#64748B]" />
+                          <Clock className="h-3 w-3 shrink-0 text-[#52525B]" />
                           {course.duration}
                         </span>
                       </td>
-                      <td className="px-6 py-3.5 font-mono text-[12px] font-semibold text-[#0F172A]">
+                      <td className="px-6 py-3.5 font-mono text-[12px] font-semibold text-[#111113]">
                         {course._count?.enrollments ?? 0}
                       </td>
                       <td className="px-6 py-3.5 text-right">
@@ -279,18 +315,18 @@ export default function AdminCoursesPage() {
 
       {/* Add Course Modal */}
       {showAddModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-[#0F172A]/40 backdrop-blur-[4px]">
-          <div className="w-full max-w-lg rounded-xl border border-[#CBD5E1] bg-white shadow-[0_12px_32px_-4px_rgba(15,23,42,0.16)] overflow-hidden">
-            <div className="h-1 w-full bg-gradient-to-r from-[#3525CD] via-[#4F46E5] to-[#10B981]" />
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-[#111113]/40 backdrop-blur-[4px]">
+          <div className="w-full max-w-lg rounded-xl border border-[#D5D2CA] bg-white shadow-[0_12px_32px_-4px_rgba(15,23,42,0.16)] overflow-hidden">
+            <div className="h-1 w-full bg-gradient-to-r from-[#4F46E5] via-[#4F46E5] to-[#10B981]" />
             <form onSubmit={handleAddCourse} className="p-6 space-y-4">
               <div className="flex items-center justify-between">
-                <h2 className="font-display text-lg font-bold text-[#0F172A]">
+                <h2 className="font-display text-lg font-bold text-[#111113]">
                   Register PMKVY Training Course
                 </h2>
                 <button
                   type="button"
                   onClick={() => setShowAddModal(false)}
-                  className="rounded-lg p-1.5 text-[#64748B] hover:bg-[#F1F5F9]"
+                  className="rounded-lg p-1.5 text-[#52525B] hover:bg-[#EFECE6]"
                   aria-label="Close modal"
                 >
                   <X className="h-4 w-4" />
@@ -346,7 +382,7 @@ export default function AdminCoursesPage() {
                     onChange={(e) =>
                       setFormData((p) => ({ ...p, difficulty: e.target.value }))
                     }
-                    className="h-9 w-full rounded-lg border border-[#CBD5E1] bg-white px-3 text-[13px] text-[#0F172A] focus:border-[#4F46E5] focus:outline-none"
+                    className="h-9 w-full rounded-lg border border-[#D5D2CA] bg-white px-3 text-[13px] text-[#111113] focus:border-[#4F46E5] focus:outline-none"
                   >
                     <option value="BEGINNER">BEGINNER</option>
                     <option value="INTERMEDIATE">INTERMEDIATE</option>
@@ -396,7 +432,7 @@ export default function AdminCoursesPage() {
                 />
               </div>
 
-              <div className="flex justify-end gap-2 pt-3 border-t border-[#E2E8F0]">
+              <div className="flex justify-end gap-2 pt-3 border-t border-[#E6E4DE]">
                 <Button
                   type="button"
                   variant="outline"

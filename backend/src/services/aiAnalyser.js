@@ -13,6 +13,11 @@ const SKILL_NOS_REGISTRY = {
     "React.js & Next.js": { nosCode: "SSC/N0508", defaultImportance: "Mandatory", sector: "IT-ITeS (NASSCOM)" },
     "Node.js & Express": { nosCode: "SSC/N0512", defaultImportance: "Mandatory", sector: "IT-ITeS (NASSCOM)" },
     "SQL & Relational Databases": { nosCode: "SSC/N8104", defaultImportance: "Mandatory", sector: "IT-ITeS (NASSCOM)" },
+    "MongoDB & NoSQL Databases": { nosCode: "SSC/N8106", defaultImportance: "Required", sector: "IT-ITeS (NASSCOM)" },
+    "C / C++ Programming": { nosCode: "SSC/N0504", defaultImportance: "Mandatory", sector: "IT-ITeS (NASSCOM)" },
+    "Middleware & Distributed Systems": { nosCode: "SSC/N0514", defaultImportance: "Mandatory", sector: "IT-ITeS (NASSCOM)" },
+    "Data Structures & Algorithms": { nosCode: "SSC/N0505", defaultImportance: "Required", sector: "IT-ITeS (NASSCOM)" },
+    "Git & Version Control": { nosCode: "SSC/N0509", defaultImportance: "Required", sector: "IT-ITeS (NASSCOM)" },
     "Python for Data Analysis": { nosCode: "SSC/N2101", defaultImportance: "Mandatory", sector: "IT-ITeS (NASSCOM)" },
     "Data Visualization (Tableau/PowerBI)": { nosCode: "SSC/N2104", defaultImportance: "Required", sector: "IT-ITeS (NASSCOM)" },
     "Statistical Modeling & Probability": { nosCode: "SSC/N2105", defaultImportance: "Mandatory", sector: "IT-ITeS (NASSCOM)" },
@@ -81,7 +86,12 @@ const SKILL_KEYWORDS_MAP = {
     TypeScript: ["typescript", "ts", "type system", "generics", "interfaces"],
     "React.js & Next.js": ["react", "react.js", "reactjs", "next.js", "nextjs", "redux", "jsx", "tsx", "hooks"],
     "Node.js & Express": ["node", "node.js", "nodejs", "express", "express.js", "backend", "api", "rest api", "fastify"],
-    "SQL & Relational Databases": ["sql", "mysql", "postgresql", "postgres", "mongodb", "mongoose", "relational database", "queries", "joins"],
+    "SQL & Relational Databases": ["sql", "mysql", "postgresql", "postgres", "relational database", "queries", "joins", "hackerrank"],
+    "MongoDB & NoSQL Databases": ["mongodb", "mongoose", "nosql", "document database", "atlas"],
+    "C / C++ Programming": ["c++", "cpp", "c/c++", "stl", "oops", "object oriented", "pointers", "c programming", "memory management"],
+    "Middleware & Distributed Systems": ["middleware", "message queue", "kafka", "rabbitmq", "grpc", "soap", "microservices", "distributed systems", "ipc", "multithreading", "sockets", "linux", "posix"],
+    "Data Structures & Algorithms": ["dsa", "data structures", "algorithms", "leetcode", "competitive programming", "dynamic programming", "graphs"],
+    "Git & Version Control": ["git", "github", "gitlab", "version control"],
     "Python for Data Analysis": ["python", "pandas", "numpy", "jupyter", "data analysis", "eda", "data wrangling"],
     "Data Visualization (Tableau/PowerBI)": ["tableau", "power bi", "powerbi", "matplotlib", "seaborn", "dashboard", "charts", "data visualization"],
     "Statistical Modeling & Probability": ["statistics", "probability", "statistical modeling", "hypothesis testing", "regression", "distributions"],
@@ -106,11 +116,9 @@ const SKILL_KEYWORDS_MAP = {
 };
 
 const GEMINI_FLASH_MODELS = [
-    "gemini-3.5-flash-lite",
     "gemini-3-flash-preview",
-    "gemini-3.1-flash-lite",
-    "gemma-4-31b-it",
-    "gemma-4-26b-a4b-it",
+    "gemini-3.5-flash-lite",
+    "gemini-flash-lite-latest",
     "gemini-3.8-flash",
 ];
 
@@ -247,13 +255,19 @@ async function validatePublicHttpUrl(rawUrl) {
 }
 
 function decodeHtmlEntities(text) {
-    return (text || "")
-        .replace(/&amp;/gi, "&")
-        .replace(/&lt;/gi, "<")
-        .replace(/&gt;/gi, ">")
-        .replace(/&quot;/gi, '"')
-        .replace(/&#39;/gi, "'")
-        .replace(/&nbsp;/gi, " ");
+    let out = String(text || "");
+    for (let pass = 0; pass < 2; pass++) {
+        out = out
+            .replace(/&amp;/gi, "&")
+            .replace(/&lt;/gi, "<")
+            .replace(/&gt;/gi, ">")
+            .replace(/&quot;/gi, '"')
+            .replace(/&#39;|&apos;/gi, "'")
+            .replace(/&nbsp;/gi, " ")
+            .replace(/&#(\d+);/g, (_, dec) => String.fromCharCode(Number(dec)))
+            .replace(/&#x([0-9a-f]+);/gi, (_, hex) => String.fromCharCode(parseInt(hex, 16)));
+    }
+    return out;
 }
 
 function stripHtmlTags(html) {
@@ -437,7 +451,11 @@ function parseGeminiJson(rawText) {
         const start = cleaned.indexOf("{");
         const end = cleaned.lastIndexOf("}");
         if (start !== -1 && end > start) {
-            return JSON.parse(cleaned.slice(start, end + 1));
+            try {
+                return JSON.parse(cleaned.slice(start, end + 1));
+            } catch {
+                return null;
+            }
         }
         return null;
     }
@@ -514,11 +532,11 @@ Respond ONLY with a valid JSON object strictly matching this schema (no markdown
   ]
 }`;
 
-    const aiDeadline = Date.now() + 18000;
+    const aiDeadline = Date.now() + 28000;
 
     for (const modelName of GEMINI_FLASH_MODELS) {
         const remainingMs = aiDeadline - Date.now();
-        if (remainingMs < 1500) break;
+        if (remainingMs < 2000) break;
 
         const isGemma = modelName.startsWith("gemma");
         const generationConfig = isGemma
@@ -530,7 +548,7 @@ Respond ONLY with a valid JSON object strictly matching this schema (no markdown
                 `https://generativelanguage.googleapis.com/v1beta/models/${modelName}:generateContent?key=${effectiveKey}`,
                 {
                     method: "POST",
-                    signal: AbortSignal.timeout(Math.min(6000, remainingMs)),
+                    signal: AbortSignal.timeout(Math.min(13000, remainingMs)),
                     headers: { "Content-Type": "application/json" },
                     body: JSON.stringify({
                         contents: [{ role: "user", parts: [{ text: prompt }] }],
@@ -602,6 +620,13 @@ export async function runResumeAnalysis({
     domain = "Web Development",
     apiKey,
 }) {
+    if (
+        /^%PDF-/i.test(resumeText.trim()) ||
+        (resumeText.match(/\/(?:FontDescriptor|FlateDecode|Catalog|Pages)\b|endobj/g) || []).length >= 2
+    ) {
+        throw new Error("Resume text appears to be raw PDF binary rather than extracted readable text. Please re-upload the PDF or paste plain resume text.");
+    }
+
     let targetJobTitle = "Full Stack Developer";
     let targetJobCode = "QP-NOS: SSC/Q0508 - v2.0";
     let targetNSQF = "NSQF Level 5";
@@ -907,10 +932,10 @@ export async function runResumeAnalysis({
     }
 
     const matchPercentage =
-        typeof geminiResult?.matchPercentage === "number"
-            ? geminiResult.matchPercentage
+        typeof geminiResult?.matchPercentage === "number" && Number.isFinite(geminiResult.matchPercentage)
+            ? Math.max(0, Math.min(100, Math.round(geminiResult.matchPercentage)))
             : totalRequiredSum > 0
-            ? Math.round((totalScoreSum / totalRequiredSum) * 100)
+            ? Math.max(0, Math.min(100, Math.round((totalScoreSum / totalRequiredSum) * 100)))
             : 50;
 
     const criticalSkillNames = evaluatedSkills

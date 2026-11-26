@@ -12,14 +12,14 @@ const SelectTrigger = React.forwardRef(({ className, children, ...props }, ref) 
     <SelectPrimitive.Trigger
         ref={ref}
         className={cn(
-            "flex h-9 w-full items-center justify-between rounded-lg border border-[#CBD5E1] bg-white px-3 py-1.5 text-[13px] text-[#0F172A] placeholder:text-[#64748B] focus:outline-none focus:border-[#4F46E5] focus:ring-2 focus:ring-[#4F46E5]/15 disabled:cursor-not-allowed disabled:opacity-50",
+            "flex h-10 w-full items-center justify-between rounded-xl border border-black/[0.12] bg-[#FBFBF9]/80 px-3.5 py-2 text-[13px] text-[#111113] placeholder:text-[#71717A] focus:bg-white focus:outline-none focus:border-[#111113] focus:ring-2 focus:ring-[#111113]/10 disabled:cursor-not-allowed disabled:opacity-50",
             className
         )}
         {...props}
     >
         {children}
         <SelectPrimitive.Icon asChild>
-            <ChevronDown className="h-4 w-4 text-[#64748B]" />
+            <ChevronDown className="h-4 w-4 text-[#52525B]" />
         </SelectPrimitive.Icon>
     </SelectPrimitive.Trigger>
 ));
@@ -30,7 +30,7 @@ const SelectContent = React.forwardRef(({ className, children, position = "poppe
         <SelectPrimitive.Content
             ref={ref}
             className={cn(
-                "relative z-50 max-h-96 min-w-[8rem] overflow-hidden rounded-lg border border-[#CBD5E1] bg-white text-[#0F172A] shadow-md",
+                "relative z-50 max-h-96 min-w-[8rem] overflow-hidden rounded-2xl border border-black/[0.1] bg-white text-[#111113] shadow-[0_20px_50px_-14px_rgba(17,17,19,0.2)]",
                 position === "popper" && "translate-y-1",
                 className
             )}
@@ -39,7 +39,7 @@ const SelectContent = React.forwardRef(({ className, children, position = "poppe
         >
             <SelectPrimitive.Viewport
                 className={cn(
-                    "p-1",
+                    "p-1.5",
                     position === "popper" && "h-[var(--radix-select-trigger-height)] w-full min-w-[var(--radix-select-trigger-width)]"
                 )}
             >
@@ -54,7 +54,7 @@ const SelectItem = React.forwardRef(({ className, children, ...props }, ref) => 
     <SelectPrimitive.Item
         ref={ref}
         className={cn(
-            "relative flex w-full cursor-default select-none items-center rounded-md py-1.5 pl-8 pr-2 text-[13px] outline-none focus:bg-[#F1F5F9] focus:text-[#4F46E5] data-[disabled]:pointer-events-none data-[disabled]:opacity-50",
+            "relative flex w-full cursor-default select-none items-center rounded-xl py-1.5 pl-8 pr-2 text-[13px] outline-none focus:bg-[#F3F1EC] focus:text-[#111113] data-[disabled]:pointer-events-none data-[disabled]:opacity-50",
             className
         )}
         {...props}

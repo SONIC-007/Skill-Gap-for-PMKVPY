@@ -28,7 +28,9 @@ export function AuthProvider({ children }) {
                 const payload = await res.json();
                 if (payload?.user) return payload.user;
             }
-            setAuthToken(null);
+            if (res.status === 401) {
+                setAuthToken(null);
+            }
             return null;
         } catch {
             return null;

@@ -5,10 +5,22 @@ import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { apiFetch } from "@/lib/api";
 import { DashboardLayout } from "@/components/layout/dashboard-layout";
+import { EditorialPageHeader } from "@/components/story/EditorialPageHeader";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { ClipboardCheck, CheckCircle2, ArrowRight, ArrowLeft, Loader2 } from "lucide-react";
+import { CheckCircle2, ArrowRight, ArrowLeft, Loader2 } from "lucide-react";
+
+function parseQuestionOptions(raw) {
+    if (Array.isArray(raw)) return raw;
+    if (!raw || typeof raw !== "string") return [];
+    try {
+        const parsed = JSON.parse(raw);
+        return Array.isArray(parsed) ? parsed : [];
+    } catch {
+        return [];
+    }
+}
 
 export default function AssessmentPage() {
     const router = useRouter();
@@ -25,9 +37,15 @@ export default function AssessmentPage() {
     const [error, setError] = useState("");
 
     useEffect(() => {
+        let active = true;
         apiFetch("/api/assessment")
-            .then((res) => res.json())
+            .then(async (res) => {
+                const data = await res.json().catch(() => ({}));
+                if (!res.ok) throw new Error(data.error || "Failed to load assessment catalog");
+                return data;
+            })
             .then((data) => {
+                if (!active) return;
                 setJobRoles(data.jobRoles || []);
                 setDomains(data.domains || []);
                 if (data.domains && data.domains.length > 0) {
@@ -36,9 +54,14 @@ export default function AssessmentPage() {
                 setLoading(false);
             })
             .catch((err) => {
+                if (!active) return;
                 console.error("Error fetching job roles:", err);
+                setError(err.message || "Failed to load job roles for assessment.");
                 setLoading(false);
             });
+        return () => {
+            active = false;
+        };
     }, []);
 
     const handleSelectJobRole = async (roleId) => {
@@ -46,23 +69,25 @@ export default function AssessmentPage() {
         const role = jobRoles.find((r) => r.id === roleId);
         setSelectedJobRole(role);
         setLoading(true);
+        setError("");
         try {
             const res = await apiFetch(`/api/assessment?jobRoleId=${roleId}`);
-            const data = await res.json();
+            const data = await res.json().catch(() => ({}));
+            if (!res.ok) throw new Error(data.error || "Failed to load questions");
             setQuestions(data.questions || []);
             const initialResp = {};
             (data.questions || []).forEach((q) => {
                 if (q.type === "RATING") {
-                    initialResp[q.id] = { answer: "50", score: 50 };
+                    initialResp[q.id] = { answer: "50", score: 50, display: "50%" };
                 } else {
-                    initialResp[q.id] = { answer: "0", score: 100 };
+                    initialResp[q.id] = { answer: "0", display: "Option A" };
                 }
             });
             setResponses(initialResp);
             setCurrentStep(2);
         } catch (err) {
             console.error(err);
-            setError("Failed to load assessment questions for this role.");
+            setError(err.message || "Failed to load assessment questions for this role.");
         } finally {
             setLoading(false);
         }
@@ -71,17 +96,17 @@ export default function AssessmentPage() {
     const handleRatingChange = (questionId, value) => {
         setResponses((prev) => ({
             ...prev,
-            [questionId]: { answer: String(value), score: value },
+            [questionId]: { answer: String(value), score: value, display: `${value}%` },
         }));
     };
 
-    const handleMCQChange = (questionId, optionIndex, correctIndex) => {
-        const isCorrect = String(optionIndex) === correctIndex;
+    const handleMCQChange = (questionId, optionIndex) => {
+        const letter = ["A", "B", "C", "D"][optionIndex] || String(optionIndex + 1);
         setResponses((prev) => ({
             ...prev,
             [questionId]: {
                 answer: String(optionIndex),
-                score: isCorrect ? 100 : 30,
+                display: `Option ${letter}`,
             },
         }));
     };
@@ -95,7 +120,7 @@ export default function AssessmentPage() {
                 responses: Object.entries(responses).map(([questionId, r]) => ({
                     questionId,
                     answer: r.answer,
-                    score: r.score,
+                    ...(typeof r.score === "number" ? { score: r.score } : {}),
                 })),
             };
             const res = await apiFetch("/api/assessment", {
@@ -103,8 +128,9 @@ export default function AssessmentPage() {
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify(payload),
             });
+            const data = await res.json().catch(() => ({}));
             if (!res.ok) {
-                throw new Error("Failed to submit assessment");
+                throw new Error(data.error || "Failed to submit assessment");
             }
             router.push(`/skill-gap?jobRoleId=${selectedJobRoleId}&completed=true`);
         } catch (err) {
@@ -123,7 +149,7 @@ export default function AssessmentPage() {
                 <div className="flex h-96 items-center justify-center">
                     <div className="text-center space-y-2">
                         <Loader2 className="h-8 w-8 animate-spin text-[#4F46E5] mx-auto" />
-                        <p className="font-mono text-[12px] text-[#64748B]">Loading Skill Assessment Arena...</p>
+                        <p className="font-mono text-[12px] text-[#52525B]">Loading Skill Assessment Arena...</p>
                     </div>
                 </div>
             </DashboardLayout>
@@ -141,29 +167,30 @@ export default function AssessmentPage() {
         <DashboardLayout>
             <div className="max-w-4xl mx-auto space-y-6 animate-fade-in">
                 {/* Breadcrumb */}
-                <nav className="flex items-center gap-2 text-[12px] font-mono text-[#64748B]">
+                <nav className="flex items-center gap-2 text-[12px] font-mono text-[#52525B]">
                     <Link href="/dashboard" className="hover:text-[#4F46E5]">Dashboard</Link>
-                    <span className="text-[#CBD5E1]">/</span>
-                    <span className="text-[#0F172A] font-medium">Technical MCQs &amp; Assessment Arena</span>
+                    <span className="text-[#D5D2CA]">/</span>
+                    <span className="text-[#111113] font-medium">Technical MCQs &amp; Assessment Arena</span>
                 </nav>
 
-                {/* Header */}
-                <div className="space-y-2">
-                    <div className="flex flex-wrap items-center gap-2">
-                        <h1 className="font-display text-2xl sm:text-[28px] font-semibold text-[#0F172A] tracking-tight">
-                            Competency &amp; MCQ Practice Arena
-                        </h1>
-                        <span className="px-2.5 py-0.5 rounded-full text-[11px] font-mono bg-[#ECFDF5] text-[#065F46] border border-[#A7F3D0]">
-                            QP-NOS Verified
-                        </span>
-                        <span className="px-2.5 py-0.5 rounded-full text-[11px] font-mono bg-[#FFFBEB] text-[#92400E] border border-[#FDE68A]">
-                            Skill Assessment Engine
-                        </span>
-                    </div>
-                    <p className="text-[14px] text-[#64748B]">
-                        Benchmark your technical proficiency and workplace competencies against official industry job roles.
-                    </p>
-                </div>
+                {/* Editorial Header */}
+                <EditorialPageHeader
+                    variant="light"
+                    eyebrow="ASSESSMENT ARENA • QP-NOS VERIFIED"
+                    title="Competency &"
+                    italicAccent="MCQ Practice Arena."
+                    description="Benchmark your technical proficiency and workplace competencies against official industry job roles."
+                    badges={
+                        <>
+                            <span className="px-3 py-1 rounded-full text-[11px] font-mono bg-[#ECFDF5] text-[#065F46] border border-[#A7F3D0]">
+                                QP-NOS Verified
+                            </span>
+                            <span className="px-3 py-1 rounded-full text-[11px] font-mono bg-[#FFFBEB] text-[#92400E] border border-[#FDE68A]">
+                                Timed Evaluation
+                            </span>
+                        </>
+                    }
+                />
 
                 {/* Stepper Strip */}
                 <div className="prepp-card p-3.5 flex items-center justify-between gap-2">
@@ -171,7 +198,7 @@ export default function AssessmentPage() {
                         <div key={st.num} className="flex items-center flex-1 last:flex-none">
                             <div
                                 className={`flex items-center gap-2 text-[12px] font-medium ${
-                                    currentStep >= st.num ? "text-[#0F172A]" : "text-[#64748B]"
+                                    currentStep >= st.num ? "text-[#111113]" : "text-[#52525B]"
                                 }`}
                             >
                                 <span
@@ -180,7 +207,7 @@ export default function AssessmentPage() {
                                             ? "bg-[#4F46E5] text-white"
                                             : currentStep > st.num
                                             ? "bg-[#10B981] text-white"
-                                            : "bg-[#F1F5F9] text-[#64748B] border border-[#E2E8F0]"
+                                            : "bg-[#EFECE6] text-[#52525B] border border-[#E6E4DE]"
                                     }`}
                                 >
                                     {currentStep > st.num ? "✓" : st.num}
@@ -188,7 +215,7 @@ export default function AssessmentPage() {
                                 <span className="hidden sm:inline">{st.label}</span>
                             </div>
                             {index < stepsList.length - 1 && (
-                                <div className={`h-px flex-1 mx-3 ${currentStep > st.num ? "bg-[#10B981]" : "bg-[#E2E8F0]"}`} />
+                                <div className={`h-px flex-1 mx-3 ${currentStep > st.num ? "bg-[#10B981]" : "bg-[#E6E4DE]"}`} />
                             )}
                         </div>
                     ))}
@@ -204,7 +231,7 @@ export default function AssessmentPage() {
                 {currentStep === 1 && (
                     <div className="space-y-5">
                         <Card>
-                            <CardHeader className="pb-3 border-b border-[#F1F5F9]">
+                            <CardHeader className="pb-3 border-b border-[#EFECE6]">
                                 <CardTitle className="text-[16px]">Step 1: Select Industry Domain</CardTitle>
                                 <CardDescription>Filter National Occupational Standard profiles by sector</CardDescription>
                             </CardHeader>
@@ -218,7 +245,7 @@ export default function AssessmentPage() {
                                             className={`px-3 py-1.5 rounded-lg text-[12px] font-medium border transition-colors cursor-pointer ${
                                                 selectedDomain === dom
                                                     ? "bg-[#4F46E5] text-white border-[#4F46E5]"
-                                                    : "bg-[#F8FAFC] text-[#464555] border-[#E2E8F0] hover:border-[#CBD5E1]"
+                                                    : "bg-[#F6F5F0] text-[#52525B] border-[#E6E4DE] hover:border-[#D5D2CA]"
                                             }`}
                                         >
                                             {dom}
@@ -229,37 +256,72 @@ export default function AssessmentPage() {
                         </Card>
 
                         <Card>
-                            <CardHeader className="pb-3 border-b border-[#F1F5F9]">
+                            <CardHeader className="pb-3 border-b border-[#EFECE6]">
                                 <CardTitle className="text-[16px]">Target Job Roles in {selectedDomain}</CardTitle>
                                 <CardDescription>Click any job profile to start its competency assessment</CardDescription>
                             </CardHeader>
                             <CardContent className="pt-4">
-                                <div className="grid grid-cols-1 md:grid-cols-2 gap-3.5">
-                                    {filteredRoles.map((role) => (
-                                        <div
-                                            key={role.id}
-                                            onClick={() => handleSelectJobRole(role.id)}
-                                            className={`p-4 rounded-xl border transition-all cursor-pointer hover:border-[#4F46E5]/50 hover:shadow-[0_1px_3px_rgba(79,70,229,0.08)] ${
-                                                selectedJobRoleId === role.id
-                                                    ? "border-[#4F46E5] bg-[#F2F3FF]"
-                                                    : "border-[#E2E8F0] bg-white"
-                                            }`}
-                                        >
-                                            <div className="flex items-start justify-between gap-2 mb-1.5">
-                                                <h4 className="font-display font-semibold text-[#0F172A] text-[15px]">
-                                                    {role.title}
-                                                </h4>
-                                                <Badge variant="secondary">{role.demandLevel || "High"} Demand</Badge>
+                                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                    {filteredRoles.map((role, rIdx) => {
+                                        const isSelected = selectedJobRoleId === role.id;
+                                        const monogram = (role.title || "R").trim().charAt(0).toUpperCase();
+                                        const palette = [
+                                            "bg-[#111113] text-white",
+                                            "bg-[#EEF4FF] text-[#2563EB]",
+                                            "bg-[#ECFDF5] text-[#059669]",
+                                            "bg-[#FFF7ED] text-[#EA580C]",
+                                        ][rIdx % 4];
+                                        return (
+                                            <div
+                                                key={role.id}
+                                                onClick={() => handleSelectJobRole(role.id)}
+                                                className={`prepp-card-interactive p-5.5 flex flex-col justify-between cursor-pointer ${
+                                                    isSelected ? "ring-2 ring-[#4F46E5]" : ""
+                                                }`}
+                                            >
+                                                <div>
+                                                    <div className="flex items-center justify-between gap-2">
+                                                        <div className={`h-10 w-10 rounded-full flex items-center justify-center font-display text-[14px] font-bold ${palette}`}>
+                                                            {monogram}
+                                                        </div>
+                                                        <span className="rounded-lg border border-black/[0.07] bg-[#F7F8FA] px-2.5 py-1 text-[11px] font-medium text-[#52525B]">
+                                                            {role.demandLevel || "High"} Demand
+                                                        </span>
+                                                    </div>
+
+                                                    <div className="mt-4">
+                                                        <div className="text-[11.5px] font-medium text-[#71717A]">
+                                                            {role.domain}
+                                                        </div>
+                                                        <h4 className="font-display font-semibold text-[#111113] text-[17px] leading-snug mt-0.5">
+                                                            {role.title}
+                                                        </h4>
+                                                    </div>
+
+                                                    <p className="text-[12.5px] text-[#52525B] line-clamp-2 mt-2">
+                                                        {role.description}
+                                                    </p>
+
+                                                    <div className="mt-3 flex flex-wrap gap-1.5">
+                                                        <span className="bento-chip">QP-NOS Aligned</span>
+                                                        <span className="bento-chip">{role.minExperience || "0–2 Years"}</span>
+                                                    </div>
+                                                </div>
+
+                                                <div className="mt-5 pt-4 border-t border-[#F0F1F3] flex items-center justify-between gap-2">
+                                                    <div>
+                                                        <div className="font-display text-[14px] font-bold text-[#111113]">
+                                                            {role.avgSalary || "Industry Std"}
+                                                        </div>
+                                                        <div className="text-[10.5px] text-[#9CA3AF]">NSQF Benchmark</div>
+                                                    </div>
+                                                    <span className="rounded-xl bg-[#111113] text-white px-3.5 py-1.5 text-[12px] font-medium inline-flex items-center gap-1">
+                                                        Start Drill <ArrowRight className="h-3 w-3" />
+                                                    </span>
+                                                </div>
                                             </div>
-                                            <p className="text-[12px] text-[#64748B] line-clamp-2 mb-3">{role.description}</p>
-                                            <div className="flex items-center justify-between text-[11px] font-mono text-[#64748B] pt-2.5 border-t border-[#F1F5F9]">
-                                                <span>{role.avgSalary || "Industry Standard"}</span>
-                                                <span className="font-semibold text-[#4F46E5] flex items-center gap-1">
-                                                    Launch Drill <ArrowRight className="h-3 w-3" />
-                                                </span>
-                                            </div>
-                                        </div>
-                                    ))}
+                                        );
+                                    })}
                                 </div>
                             </CardContent>
                         </Card>
@@ -271,10 +333,10 @@ export default function AssessmentPage() {
                     <div className="space-y-4">
                         <div className="flex items-center justify-between">
                             <div>
-                                <h2 className="font-display text-[18px] font-semibold text-[#0F172A]">
+                                <h2 className="font-display text-[18px] font-semibold text-[#111113]">
                                     Technical Competency Workbench
                                 </h2>
-                                <p className="text-[13px] text-[#64748B]">
+                                <p className="text-[13px] text-[#52525B]">
                                     Target: <strong className="text-[#4F46E5]">{selectedJobRole?.title}</strong>
                                 </p>
                             </div>
@@ -283,12 +345,12 @@ export default function AssessmentPage() {
 
                         {technicalQuestions.map((q, idx) => (
                             <Card key={q.id} className="overflow-hidden">
-                                <div className="px-5 py-3 bg-[#F8FAFC] border-b border-[#E2E8F0] flex items-center justify-between">
+                                <div className="px-5 py-3 bg-[#F6F5F0] border-b border-[#E6E4DE] flex items-center justify-between">
                                     <div className="flex items-center gap-2">
-                                        <span className="font-mono text-[12px] font-semibold text-[#0F172A]">
+                                        <span className="font-mono text-[12px] font-semibold text-[#111113]">
                                             Question #{idx + 1} of {technicalQuestions.length}
                                         </span>
-                                        <span className="text-[#CBD5E1]">•</span>
+                                        <span className="text-[#D5D2CA]">•</span>
                                         <Badge variant="secondary">{q.skill?.name}</Badge>
                                     </div>
                                     <Badge variant={q.type === "RATING" ? "muted" : "warning"}>
@@ -296,13 +358,13 @@ export default function AssessmentPage() {
                                     </Badge>
                                 </div>
                                 <CardContent className="p-5 space-y-4">
-                                    <p className="text-[15px] font-medium text-[#0F172A] leading-relaxed">{q.question}</p>
+                                    <p className="text-[15px] font-medium text-[#111113] leading-relaxed">{q.question}</p>
 
                                     {q.type === "RATING" ? (
-                                        <div className="p-4 rounded-lg bg-[#F8FAFC] border border-[#E2E8F0] space-y-2.5">
-                                            <div className="flex items-center justify-between text-[12px] font-mono text-[#64748B]">
+                                        <div className="p-4 rounded-lg bg-[#F6F5F0] border border-[#E6E4DE] space-y-2.5">
+                                            <div className="flex items-center justify-between text-[12px] font-mono text-[#52525B]">
                                                 <span>Beginner (0%)</span>
-                                                <span className="px-2 py-0.5 rounded bg-[#EAEDFF] text-[#3525CD] font-bold text-[13px]">
+                                                <span className="px-2 py-0.5 rounded bg-[#EAECFF] text-[#4F46E5] font-bold text-[13px]">
                                                     {responses[q.id]?.score || 50}%
                                                 </span>
                                                 <span>Expert (100%)</span>
@@ -314,12 +376,12 @@ export default function AssessmentPage() {
                                                 step="5"
                                                 value={responses[q.id]?.score || 50}
                                                 onChange={(e) => handleRatingChange(q.id, Number(e.target.value))}
-                                                className="w-full accent-[#4F46E5] cursor-pointer h-2 bg-[#E2E8F0] rounded-lg"
+                                                className="w-full accent-[#4F46E5] cursor-pointer h-2 bg-[#E6E4DE] rounded-lg"
                                             />
                                         </div>
                                     ) : (
                                         <div className="space-y-2">
-                                            {JSON.parse(q.options || "[]").map((opt, optIdx) => {
+                                            {parseQuestionOptions(q.options).map((opt, optIdx) => {
                                                 const letter = ["A", "B", "C", "D"][optIdx] || optIdx + 1;
                                                 const isSelected = responses[q.id]?.answer === String(optIdx);
                                                 return (
@@ -327,15 +389,15 @@ export default function AssessmentPage() {
                                                         key={optIdx}
                                                         className={`flex items-start gap-3 p-3 rounded-lg border text-[13px] cursor-pointer transition-all ${
                                                             isSelected
-                                                                ? "border-[#4F46E5] bg-[#F2F3FF]/60 text-[#0F172A]"
-                                                                : "border-[#E2E8F0] hover:border-[#CBD5E1] bg-white hover:bg-[#F8FAFC] text-[#334155]"
+                                                                ? "border-[#4F46E5] bg-[#EEF0FF]/60 text-[#111113]"
+                                                                : "border-[#E6E4DE] hover:border-[#D5D2CA] bg-white hover:bg-[#F6F5F0] text-[#27272A]"
                                                         }`}
                                                     >
                                                         <input
                                                             type="radio"
                                                             name={`q-${q.id}`}
                                                             checked={isSelected}
-                                                            onChange={() => handleMCQChange(q.id, optIdx, q.correctAnswer || "0")}
+                                                            onChange={() => handleMCQChange(q.id, optIdx)}
                                                             className="mt-0.5 accent-[#4F46E5]"
                                                         />
                                                         <span className="flex-1">
@@ -367,10 +429,10 @@ export default function AssessmentPage() {
                     <div className="space-y-4">
                         <div className="flex items-center justify-between">
                             <div>
-                                <h2 className="font-display text-[18px] font-semibold text-[#0F172A]">
+                                <h2 className="font-display text-[18px] font-semibold text-[#111113]">
                                     Workplace &amp; Soft Competencies
                                 </h2>
-                                <p className="text-[13px] text-[#64748B]">Evaluate communication, analytical, and collaboration skills</p>
+                                <p className="text-[13px] text-[#52525B]">Evaluate communication, analytical, and collaboration skills</p>
                             </div>
                             <Badge variant="secondary">Soft Skills</Badge>
                         </div>
@@ -378,15 +440,15 @@ export default function AssessmentPage() {
                         {softQuestions.length > 0 ? (
                             softQuestions.map((q, idx) => (
                                 <Card key={q.id} className="overflow-hidden">
-                                    <div className="px-5 py-3 bg-[#F8FAFC] border-b border-[#E2E8F0] flex items-center justify-between">
+                                    <div className="px-5 py-3 bg-[#F6F5F0] border-b border-[#E6E4DE] flex items-center justify-between">
                                         <Badge variant="outline">{q.skill?.name}</Badge>
-                                        <span className="font-mono text-[11px] text-[#64748B]">Soft Skill #{idx + 1}</span>
+                                        <span className="font-mono text-[11px] text-[#52525B]">Soft Skill #{idx + 1}</span>
                                     </div>
                                     <CardContent className="p-5 space-y-4">
-                                        <p className="text-[14px] font-medium text-[#0F172A]">{q.question}</p>
+                                        <p className="text-[14px] font-medium text-[#111113]">{q.question}</p>
                                         {q.type === "RATING" ? (
-                                            <div className="p-4 rounded-lg bg-[#F8FAFC] border border-[#E2E8F0] space-y-2">
-                                                <div className="flex items-center justify-between font-mono text-[12px] text-[#64748B]">
+                                            <div className="p-4 rounded-lg bg-[#F6F5F0] border border-[#E6E4DE] space-y-2">
+                                                <div className="flex items-center justify-between font-mono text-[12px] text-[#52525B]">
                                                     <span>Developing (0%)</span>
                                                     <span className="text-[#4F46E5] font-bold">{responses[q.id]?.score || 50}%</span>
                                                     <span>Exemplary (100%)</span>
@@ -398,25 +460,25 @@ export default function AssessmentPage() {
                                                     step="5"
                                                     value={responses[q.id]?.score || 50}
                                                     onChange={(e) => handleRatingChange(q.id, Number(e.target.value))}
-                                                    className="w-full accent-[#4F46E5] cursor-pointer h-2 bg-[#E2E8F0] rounded-lg"
+                                                    className="w-full accent-[#4F46E5] cursor-pointer h-2 bg-[#E6E4DE] rounded-lg"
                                                 />
                                             </div>
                                         ) : (
                                             <div className="space-y-2">
-                                                {JSON.parse(q.options || "[]").map((opt, optIdx) => (
+                                                {parseQuestionOptions(q.options).map((opt, optIdx) => (
                                                     <label
                                                         key={optIdx}
                                                         className={`flex items-start gap-3 p-3 rounded-lg border text-[13px] cursor-pointer ${
                                                             responses[q.id]?.answer === String(optIdx)
-                                                                ? "border-[#4F46E5] bg-[#F2F3FF]/60 font-medium"
-                                                                : "border-[#E2E8F0] hover:bg-[#F8FAFC]"
+                                                                ? "border-[#4F46E5] bg-[#EEF0FF]/60 font-medium"
+                                                                : "border-[#E6E4DE] hover:bg-[#F6F5F0]"
                                                         }`}
                                                     >
                                                         <input
                                                             type="radio"
                                                             name={`q-${q.id}`}
                                                             checked={responses[q.id]?.answer === String(optIdx)}
-                                                            onChange={() => handleMCQChange(q.id, optIdx, q.correctAnswer || "0")}
+                                                            onChange={() => handleMCQChange(q.id, optIdx)}
                                                             className="mt-0.5 accent-[#4F46E5]"
                                                         />
                                                         <span>{opt}</span>
@@ -428,7 +490,7 @@ export default function AssessmentPage() {
                                 </Card>
                             ))
                         ) : (
-                            <Card className="p-6 text-center text-[#64748B] text-[13px]">
+                            <Card className="p-6 text-center text-[#52525B] text-[13px]">
                                 No additional soft skill prompts required for this Qualification Pack.
                             </Card>
                         )}
@@ -447,17 +509,17 @@ export default function AssessmentPage() {
                 {/* STEP 4: Review & Submit */}
                 {currentStep === 4 && (
                     <Card>
-                        <CardHeader className="border-b border-[#F1F5F9]">
+                        <CardHeader className="border-b border-[#EFECE6]">
                             <CardTitle>Review Assessment Submission</CardTitle>
                             <CardDescription>
                                 Confirm your scores for <strong>{selectedJobRole?.title}</strong> before calculating skill gap
                             </CardDescription>
                         </CardHeader>
                         <CardContent className="pt-5 space-y-5">
-                            <div className="p-4 rounded-xl bg-[#F2F3FF] border border-[#C7C4D8] flex items-center justify-between">
+                            <div className="p-4 rounded-xl bg-[#EEF0FF] border border-[#C7D2FE] flex items-center justify-between">
                                 <div>
-                                    <h4 className="font-display font-semibold text-[#0F172A]">{selectedJobRole?.title}</h4>
-                                    <p className="font-mono text-[11px] text-[#464555]">
+                                    <h4 className="font-display font-semibold text-[#111113]">{selectedJobRole?.title}</h4>
+                                    <p className="font-mono text-[11px] text-[#52525B]">
                                         {selectedJobRole?.domain} • {questions.length} Assessed Competencies
                                     </p>
                                 </div>
@@ -466,21 +528,21 @@ export default function AssessmentPage() {
 
                             <div className="max-h-64 overflow-y-auto space-y-2 pr-1 custom-scrollbar">
                                 {questions.map((q) => (
-                                    <div key={q.id} className="flex items-center justify-between p-2.5 rounded-lg border border-[#E2E8F0] bg-[#F8FAFC] text-[13px]">
-                                        <span className="font-medium text-[#0F172A]">{q.skill?.name}</span>
+                                    <div key={q.id} className="flex items-center justify-between p-2.5 rounded-lg border border-[#E6E4DE] bg-[#F6F5F0] text-[13px]">
+                                        <span className="font-medium text-[#111113]">{q.skill?.name}</span>
                                         <div className="flex items-center gap-3">
-                                            <span className="font-mono text-[11px] text-[#64748B] uppercase">
+                                            <span className="font-mono text-[11px] text-[#52525B] uppercase">
                                                 {q.skill?.category}
                                             </span>
-                                            <span className="font-mono font-bold text-[#4F46E5] w-12 text-right">
-                                                {responses[q.id]?.score || 0}%
+                                            <span className="font-mono font-bold text-[#4F46E5] min-w-16 text-right">
+                                                {responses[q.id]?.display || (q.type === "RATING" ? "50%" : "Option A")}
                                             </span>
                                         </div>
                                     </div>
                                 ))}
                             </div>
                         </CardContent>
-                        <CardFooter className="flex items-center justify-between border-t border-[#F1F5F9] pt-4">
+                        <CardFooter className="flex items-center justify-between border-t border-[#EFECE6] pt-4">
                             <Button variant="outline" onClick={() => setCurrentStep(3)} disabled={submitting}>
                                 <ArrowLeft className="h-4 w-4" /> Edit Ratings
                             </Button>

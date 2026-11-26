@@ -5,6 +5,7 @@ import { useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { apiFetch } from "@/lib/api";
 import { DashboardLayout } from "@/components/layout/dashboard-layout";
+import { EditorialPageHeader } from "@/components/story/EditorialPageHeader";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -20,43 +21,69 @@ function SkillGapContent() {
     const [selectedJobRoleId, setSelectedJobRoleId] = useState(jobRoleIdParam || "");
     const [analysisData, setAnalysisData] = useState(null);
     const [loading, setLoading] = useState(true);
+    const [errorMsg, setErrorMsg] = useState("");
 
     useEffect(() => {
+        let active = true;
         apiFetch("/api/skill-gap")
-            .then((res) => res.json())
+            .then(async (res) => {
+                const data = await res.json().catch(() => ({}));
+                if (!res.ok) throw new Error(data.error || "Failed to load roles");
+                return data;
+            })
             .then((data) => {
+                if (!active) return;
                 const assList = data.assessments || [];
                 const rolesList = data.jobRoles || [];
                 setAssessments(assList);
                 setAvailableRoles(rolesList);
-                if (!selectedJobRoleId) {
+                setSelectedJobRoleId((prev) => {
+                    if (prev) return prev;
                     if (assList.length > 0 && assList[0].jobRoleId) {
-                        setSelectedJobRoleId(assList[0].jobRoleId);
-                    } else if (rolesList.length > 0) {
-                        setSelectedJobRoleId(rolesList[0].id);
+                        return assList[0].jobRoleId;
                     }
-                }
+                    if (rolesList.length > 0) {
+                        return rolesList[0].id;
+                    }
+                    return "";
+                });
                 setLoading(false);
             })
             .catch((err) => {
+                if (!active) return;
                 console.error(err);
+                setErrorMsg(err.message || "Failed to load skill gap baselines.");
                 setLoading(false);
             });
+        return () => {
+            active = false;
+        };
     }, []);
 
     useEffect(() => {
         if (!selectedJobRoleId) return;
-        setLoading(true);
+        let active = true;
         apiFetch(`/api/skill-gap?jobRoleId=${selectedJobRoleId}`)
-            .then((res) => res.json())
+            .then(async (res) => {
+                const data = await res.json().catch(() => ({}));
+                if (!res.ok) throw new Error(data.error || "Failed to load role analysis");
+                return data;
+            })
             .then((data) => {
+                if (!active) return;
                 setAnalysisData(data);
+                setErrorMsg("");
                 setLoading(false);
             })
             .catch((err) => {
+                if (!active) return;
                 console.error(err);
+                setErrorMsg(err.message || "Failed to calculate skill gap.");
                 setLoading(false);
             });
+        return () => {
+            active = false;
+        };
     }, [selectedJobRoleId]);
 
     const skills = analysisData?.skills || analysisData?.skillGapResults || [];
@@ -75,11 +102,17 @@ function SkillGapContent() {
 
     return (
         <div className="space-y-6 animate-fade-in">
-            <nav className="flex items-center gap-2 text-[12px] font-mono text-[#64748B]">
+            <nav className="flex items-center gap-2 text-[12px] font-mono text-[#52525B]">
                 <Link href="/dashboard" className="hover:text-[#4F46E5]">Dashboard</Link>
-                <span className="text-[#CBD5E1]">/</span>
-                <span className="text-[#0F172A] font-medium">Skill Gap Matrix</span>
+                <span className="text-[#D5D2CA]">/</span>
+                <span className="text-[#111113] font-medium">Skill Gap Matrix</span>
             </nav>
+
+            {errorMsg && (
+                <div className="p-3.5 rounded-lg bg-[#FEF2F2] border border-[#FECACA] text-[#991B1B] text-[13px] font-medium">
+                    {errorMsg}
+                </div>
+            )}
 
             {isJustCompleted && (
                 <div className="p-3.5 rounded-lg bg-[#ECFDF5] border border-[#A7F3D0] text-[#065F46] flex items-center justify-between">
@@ -93,30 +126,26 @@ function SkillGapContent() {
                 </div>
             )}
 
-            {/* Header Card */}
-            <div className="prepp-card p-6">
-                <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-                    <div>
-                        <div className="flex items-center gap-2 mb-2">
-                            <Badge variant="secondary">Competency Benchmarking</Badge>
-                        </div>
-                        <h1 className="font-display text-2xl sm:text-[28px] font-semibold text-[#0F172A] tracking-tight">
-                            Skill Gap Analysis
-                        </h1>
-                        <p className="text-[14px] text-[#64748B] mt-1 max-w-2xl">
-                            Weighted proficiency calculation comparing candidate evidence against Qualification Pack requirements.
-                        </p>
-                    </div>
-
-                    {(assessments.length > 0 || availableRoles.length > 0) && (
-                        <div className="flex items-center gap-2 bg-[#F8FAFC] p-2 rounded-lg border border-[#E2E8F0]">
-                            <span className="font-mono text-[11px] font-semibold text-[#64748B] pl-1">
+            {/* Editorial Header Card */}
+            <EditorialPageHeader
+                variant="light"
+                eyebrow="COMPETENCY BENCHMARKING"
+                title="Skill Gap"
+                italicAccent="Analysis Matrix."
+                description="Weighted proficiency calculation comparing candidate evidence against Qualification Pack requirements."
+                rightSlot={
+                    (assessments.length > 0 || availableRoles.length > 0) && (
+                        <div className="flex items-center gap-2 bg-[#F6F5F0] p-2 rounded-full border border-black/[0.08]">
+                            <span className="font-mono text-[11px] font-semibold text-[#52525B] pl-2.5">
                                 {assessments.length > 0 ? "ROLE:" : "TARGET:"}
                             </span>
                             <select
                                 value={selectedJobRoleId}
-                                onChange={(e) => setSelectedJobRoleId(e.target.value)}
-                                className="h-8 text-[13px] font-medium text-[#0F172A] bg-white border border-[#CBD5E1] rounded-md px-2.5 focus:outline-none focus:border-[#4F46E5]"
+                                onChange={(e) => {
+                                    setLoading(true);
+                                    setSelectedJobRoleId(e.target.value);
+                                }}
+                                className="h-8 text-[13px] font-medium text-[#111113] bg-white border border-black/[0.1] rounded-full px-3 focus:outline-none focus:border-[#111113]"
                             >
                                 {assessments.length > 0
                                     ? assessments.map((a) => (
@@ -131,70 +160,92 @@ function SkillGapContent() {
                                       ))}
                             </select>
                         </div>
-                    )}
-                </div>
-            </div>
+                    )
+                }
+            />
 
             {/* Formula Strip */}
-            <div className="prepp-card p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-[#F8FAFC]">
-                <div className="flex items-center gap-2.5 text-[13px] text-[#464555]">
-                    <Info className="h-4 w-4 text-[#4F46E5] shrink-0" />
-                    <span className="font-medium text-[#0F172A]">Gap Formula:</span>
+            <div className="prepp-card p-4.5 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                <div className="flex items-center gap-2.5 text-[13px] text-[#52525B]">
+                    <span className="h-8 w-8 rounded-full bg-[#F4F5F7] flex items-center justify-center text-[#4F46E5] shrink-0">
+                        <Info className="h-4 w-4" />
+                    </span>
+                    <span className="font-medium text-[#111113]">Benchmark Formula</span>
                 </div>
-                <code className="font-mono bg-white px-3 py-1 rounded-md border border-[#E2E8F0] text-[#3525CD] text-[12px]">
+                <code className="font-mono bg-[#F4F5F7] px-3.5 py-1.5 rounded-xl text-[#4F46E5] text-[12px]">
                     Gap (%) = ((Required - Candidate) / Required) × 100
                 </code>
             </div>
 
-            {/* 4 Metric Cards */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-                <div className="prepp-card p-5 flex flex-col justify-between">
-                    <span className="font-mono text-[11px] font-medium text-[#64748B] uppercase">Overall Gap</span>
-                    <div className="font-mono text-3xl font-bold text-[#0F172A] mt-2">{overallGap}%</div>
-                    <div className="w-full bg-[#F1F5F9] h-1.5 rounded-full overflow-hidden mt-3">
-                        <div
-                            className={`h-full rounded-full ${
-                                overallGap > 50 ? "bg-[#BA1A1A]" : overallGap > 25 ? "bg-[#F59E0B]" : "bg-[#10B981]"
-                            }`}
-                            style={{ width: `${overallGap}%` }}
-                        />
+            {/* 4 Metric Bento Cards (Ref 3 Radial + Minimal Gauge Style) */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5">
+                <div className="prepp-card prepp-card-interactive p-5 flex items-center justify-between gap-3">
+                    <div className="min-w-0">
+                        <span className="font-mono text-[10.5px] font-semibold text-[#71717A] uppercase">Overall Gap</span>
+                        <div className="font-display text-3xl font-bold text-[#111113] mt-1">{overallGap}%</div>
+                        <p className="text-[11px] text-[#71717A] mt-1 truncate">
+                            {analysisData?.jobRole?.title || "Selected Role"}
+                        </p>
                     </div>
-                    <p className="text-[11px] text-[#64748B] mt-2 truncate">
-                        Target: {analysisData?.jobRole?.title || "Selected Role"}
-                    </p>
+                    <div className="relative w-16 h-16 shrink-0 flex items-center justify-center">
+                        <svg className="w-16 h-16 -rotate-90" viewBox="0 0 36 36">
+                            <path
+                                className="text-[#F1F2F4]"
+                                d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831"
+                                fill="none"
+                                stroke="currentColor"
+                                strokeWidth="3.5"
+                            />
+                            <path
+                                className={overallGap > 50 ? "text-[#BA1A1A]" : overallGap > 25 ? "text-[#DF9A57]" : "text-[#86BA6C]"}
+                                d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831"
+                                fill="none"
+                                stroke="currentColor"
+                                strokeDasharray={`${overallGap}, 100`}
+                                strokeLinecap="round"
+                                strokeWidth="3.5"
+                            />
+                        </svg>
+                    </div>
                 </div>
 
-                <div className="prepp-card p-5 flex flex-col justify-between">
+                <div className="prepp-card prepp-card-interactive p-5 flex flex-col justify-between">
                     <div className="flex items-center justify-between">
-                        <span className="font-mono text-[11px] font-medium text-[#065F46] uppercase">Met Criteria</span>
-                        <CheckCircle2 className="h-4 w-4 text-[#10B981]" />
+                        <span className="font-mono text-[10.5px] font-semibold text-[#065F46] uppercase">Met Criteria</span>
+                        <span className="h-8 w-8 rounded-full bg-[#ECFDF5] flex items-center justify-center">
+                            <CheckCircle2 className="h-4 w-4 text-[#10B981]" />
+                        </span>
                     </div>
-                    <div className="font-mono text-3xl font-bold text-[#10B981] mt-2">{metSkills.length}</div>
-                    <p className="text-[12px] text-[#64748B] mt-2">Gap ≤ 10% (Ready)</p>
+                    <div className="font-display text-3xl font-bold text-[#111113] mt-2">{metSkills.length}</div>
+                    <p className="text-[11.5px] text-[#71717A] mt-1">Gap ≤ 10% (Placement Ready)</p>
                 </div>
 
-                <div className="prepp-card p-5 flex flex-col justify-between">
+                <div className="prepp-card prepp-card-interactive p-5 flex flex-col justify-between">
                     <div className="flex items-center justify-between">
-                        <span className="font-mono text-[11px] font-medium text-[#92400E] uppercase">Needs Work</span>
-                        <AlertTriangle className="h-4 w-4 text-[#F59E0B]" />
+                        <span className="font-mono text-[10.5px] font-semibold text-[#92400E] uppercase">Needs Work</span>
+                        <span className="h-8 w-8 rounded-full bg-[#FFFBEB] flex items-center justify-center">
+                            <AlertTriangle className="h-4 w-4 text-[#F59E0B]" />
+                        </span>
                     </div>
-                    <div className="font-mono text-3xl font-bold text-[#F59E0B] mt-2">{improvementSkills.length}</div>
-                    <p className="text-[12px] text-[#64748B] mt-2">Gap 10% – 50%</p>
+                    <div className="font-display text-3xl font-bold text-[#111113] mt-2">{improvementSkills.length}</div>
+                    <p className="text-[11.5px] text-[#71717A] mt-1">Gap 10% – 50%</p>
                 </div>
 
-                <div className="prepp-card p-5 flex flex-col justify-between">
+                <div className="prepp-card prepp-card-interactive p-5 flex flex-col justify-between">
                     <div className="flex items-center justify-between">
-                        <span className="font-mono text-[11px] font-medium text-[#991B1B] uppercase">Critical Gaps</span>
-                        <XCircle className="h-4 w-4 text-[#BA1A1A]" />
+                        <span className="font-mono text-[10.5px] font-semibold text-[#991B1B] uppercase">Critical Gaps</span>
+                        <span className="h-8 w-8 rounded-full bg-[#FEF2F2] flex items-center justify-center">
+                            <XCircle className="h-4 w-4 text-[#BA1A1A]" />
+                        </span>
                     </div>
-                    <div className="font-mono text-3xl font-bold text-[#BA1A1A] mt-2">{missingSkills.length}</div>
-                    <p className="text-[12px] text-[#64748B] mt-2">Gap &gt; 50% (Priority)</p>
+                    <div className="font-display text-3xl font-bold text-[#111113] mt-2">{missingSkills.length}</div>
+                    <p className="text-[11.5px] text-[#71717A] mt-1">Gap &gt; 50% (Bridge Priority)</p>
                 </div>
             </div>
 
             {/* Chart */}
             <Card>
-                <CardHeader className="pb-2 border-b border-[#F1F5F9]">
+                <CardHeader className="pb-2 border-b border-[#EFECE6]">
                     <CardTitle>Required vs. Candidate Proficiency</CardTitle>
                     <CardDescription>Verified candidate scores plotted against target role specifications</CardDescription>
                 </CardHeader>
@@ -203,12 +254,12 @@ function SkillGapContent() {
                         <div className="h-80 w-full">
                             <ResponsiveContainer width="100%" height="100%">
                                 <BarChart data={chartData} margin={{ top: 20, right: 20, left: -10, bottom: 25 }}>
-                                    <CartesianGrid strokeDasharray="3 3" stroke="#E2E8F0" />
-                                    <XAxis dataKey="name" tick={{ fontSize: 11, fill: "#64748B" }} angle={-15} textAnchor="end" interval={0} />
-                                    <YAxis domain={[0, 100]} tick={{ fontSize: 11, fill: "#64748B" }} />
+                                    <CartesianGrid strokeDasharray="3 3" stroke="#E6E4DE" />
+                                    <XAxis dataKey="name" tick={{ fontSize: 11, fill: "#52525B" }} angle={-15} textAnchor="end" interval={0} />
+                                    <YAxis domain={[0, 100]} tick={{ fontSize: 11, fill: "#52525B" }} />
                                     <Tooltip
                                         contentStyle={{
-                                            backgroundColor: "#0F172A",
+                                            backgroundColor: "#111113",
                                             borderRadius: "8px",
                                             color: "#fff",
                                             border: "none",
@@ -216,13 +267,13 @@ function SkillGapContent() {
                                         }}
                                     />
                                     <Legend wrapperStyle={{ fontSize: "12px" }} />
-                                    <Bar dataKey="Required Proficiency" fill="#0F172A" radius={[4, 4, 0, 0]} />
+                                    <Bar dataKey="Required Proficiency" fill="#111113" radius={[4, 4, 0, 0]} />
                                     <Bar dataKey="Your Proficiency" fill="#4F46E5" radius={[4, 4, 0, 0]} />
                                 </BarChart>
                             </ResponsiveContainer>
                         </div>
                     ) : (
-                        <div className="h-64 flex items-center justify-center text-[#64748B] text-[13px] font-mono">
+                        <div className="h-64 flex items-center justify-center text-[#52525B] text-[13px] font-mono">
                             {loading ? "Loading matrix..." : "No comparison data available"}
                         </div>
                     )}
@@ -239,7 +290,7 @@ function SkillGapContent() {
                     <div className="overflow-x-auto">
                         <table className="w-full text-left border-collapse text-[13px]">
                             <thead>
-                                <tr className="bg-[#F8FAFC] border-y border-[#E2E8F0] font-mono text-[11px] font-semibold uppercase tracking-wider text-[#64748B]">
+                                <tr className="bg-[#F6F5F0] border-y border-[#E6E4DE] font-mono text-[11px] font-semibold uppercase tracking-wider text-[#52525B]">
                                     <th className="py-2.5 px-5">Skill / Competency</th>
                                     <th className="py-2.5 px-4">Category</th>
                                     <th className="py-2.5 px-4 text-center">Required</th>
@@ -249,23 +300,23 @@ function SkillGapContent() {
                                     <th className="py-2.5 px-5 text-right">Action</th>
                                 </tr>
                             </thead>
-                            <tbody className="divide-y divide-[#E2E8F0] bg-white">
+                            <tbody className="divide-y divide-[#E6E4DE] bg-white">
                                 {skills.map((s, idx) => {
                                     const assessed = s.candidateProficiency ?? s.currentProficiency ?? 0;
                                     const isMet = s.status === "met" || s.status === "MET";
                                     const isImp = s.status === "improvement" || s.status === "MODERATE_GAP";
                                     return (
-                                        <tr key={s.skillId || idx} className="hover:bg-[#F8FAFC] transition-colors">
+                                        <tr key={s.skillId || idx} className="hover:bg-[#F6F5F0] transition-colors">
                                             <td className="py-3.5 px-5">
-                                                <div className="font-semibold text-[#0F172A]">{s.skillName}</div>
-                                                <div className="font-mono text-[11px] text-[#64748B]">
+                                                <div className="font-semibold text-[#111113]">{s.skillName}</div>
+                                                <div className="font-mono text-[11px] text-[#52525B]">
                                                     Importance: {s.importance}
                                                 </div>
                                             </td>
                                             <td className="py-3.5 px-4">
                                                 <Badge variant="muted">{(s.category || "TECHNICAL").toLowerCase()}</Badge>
                                             </td>
-                                            <td className="py-3.5 px-4 text-center font-mono font-medium text-[#0F172A]">
+                                            <td className="py-3.5 px-4 text-center font-mono font-medium text-[#111113]">
                                                 {s.requiredProficiency}%
                                             </td>
                                             <td className="py-3.5 px-4 text-center font-mono font-medium text-[#4F46E5]">
@@ -306,10 +357,10 @@ function SkillGapContent() {
             </Card>
 
             {/* Footer Callout */}
-            <div className="prepp-card p-6 flex flex-col sm:flex-row items-center justify-between gap-4 bg-gradient-to-r from-white to-[#F2F3FF]">
+            <div className="prepp-card p-6 flex flex-col sm:flex-row items-center justify-between gap-4 bg-gradient-to-r from-white to-[#EEF0FF]">
                 <div>
-                    <h3 className="font-display text-[17px] font-semibold text-[#0F172A]">Ready to close these skill gaps?</h3>
-                    <p className="text-[13px] text-[#64748B] mt-0.5">
+                    <h3 className="font-display text-[17px] font-semibold text-[#111113]">Ready to close these skill gaps?</h3>
+                    <p className="text-[13px] text-[#52525B] mt-0.5">
                         Enroll in subsidized PMKVY courses targeted to your missing competencies.
                     </p>
                 </div>
@@ -335,7 +386,7 @@ export default function SkillGapPage() {
         <DashboardLayout>
             <Suspense
                 fallback={
-                    <div className="flex h-96 items-center justify-center font-mono text-[13px] text-[#64748B]">
+                    <div className="flex h-96 items-center justify-center font-mono text-[13px] text-[#52525B]">
                         Loading gap analysis...
                     </div>
                 }

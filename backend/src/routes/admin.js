@@ -139,14 +139,18 @@ router.post("/skills", async (req, res) => {
     try {
         await connectToDatabase();
         const { name, category, domain, description } = req.body || {};
-        if (!name || !domain) {
+        if (!name || !String(name).trim() || !domain || !String(domain).trim()) {
             return res.status(400).json({ error: "Name and domain are required" });
+        }
+        const normalizedCategory = String(category || "TECHNICAL").trim().toUpperCase();
+        if (normalizedCategory !== "TECHNICAL" && normalizedCategory !== "SOFT") {
+            return res.status(400).json({ error: "Category must be TECHNICAL or SOFT" });
         }
         const created = await Skill.create({
             name: String(name).trim(),
-            category: category || "TECHNICAL",
+            category: normalizedCategory,
             domain: String(domain).trim(),
-            description: description || null,
+            description: description ? String(description).trim() : null,
         });
         return res.status(201).json({
             skill: {
@@ -158,6 +162,9 @@ router.post("/skills", async (req, res) => {
             },
         });
     } catch (error) {
+        if (error?.code === 11000) {
+            return res.status(400).json({ error: "A skill with this name already exists" });
+        }
         console.error("Admin skills POST error:", error);
         return res.status(500).json({ error: "Failed to create skill" });
     }
@@ -170,16 +177,30 @@ router.put("/skills", async (req, res) => {
         if (!id || !mongoose.Types.ObjectId.isValid(id)) {
             return res.status(400).json({ error: "Valid skill ID required" });
         }
-        const updated = await Skill.findByIdAndUpdate(
-            id,
-            { name, category, domain, description },
-            { new: true }
-        ).lean();
+
+        const updatePayload = {};
+        if (name !== undefined && String(name).trim()) updatePayload.name = String(name).trim();
+        if (domain !== undefined && String(domain).trim()) updatePayload.domain = String(domain).trim();
+        if (category !== undefined) {
+            const normalizedCategory = String(category).trim().toUpperCase();
+            if (normalizedCategory !== "TECHNICAL" && normalizedCategory !== "SOFT") {
+                return res.status(400).json({ error: "Category must be TECHNICAL or SOFT" });
+            }
+            updatePayload.category = normalizedCategory;
+        }
+        if (description !== undefined) {
+            updatePayload.description = description ? String(description).trim() : null;
+        }
+
+        const updated = await Skill.findByIdAndUpdate(id, updatePayload, { new: true }).lean();
         if (!updated) {
             return res.status(404).json({ error: "Skill not found" });
         }
         return res.json({ skill: { ...updated, id: updated._id.toString() } });
     } catch (error) {
+        if (error?.code === 11000) {
+            return res.status(400).json({ error: "A skill with this name already exists" });
+        }
         console.error("Admin skills PUT error:", error);
         return res.status(500).json({ error: "Failed to update skill" });
     }
@@ -192,8 +213,11 @@ router.delete("/skills", async (req, res) => {
         if (!id || !mongoose.Types.ObjectId.isValid(id)) {
             return res.status(400).json({ error: "Valid skill ID required" });
         }
+        const deleted = await Skill.findByIdAndDelete(id);
+        if (!deleted) {
+            return res.status(404).json({ error: "Skill not found" });
+        }
         await Promise.all([
-            Skill.findByIdAndDelete(id),
             CandidateSkill.deleteMany({ skillId: id }),
             JobSkillRequirement.deleteMany({ skillId: id }),
             CourseSkill.deleteMany({ skillId: id }),
@@ -261,16 +285,19 @@ router.post("/job-roles", async (req, res) => {
     try {
         await connectToDatabase();
         const { title, domain, description, minExperience, avgSalary, demandLevel } = req.body || {};
-        if (!title || !domain) {
+        if (!title || !String(title).trim() || !domain || !String(domain).trim()) {
             return res.status(400).json({ error: "Title and domain are required" });
         }
+        const VALID_DEMAND = ["High", "Medium", "Low", "Critical", "HIGH", "MEDIUM", "LOW", "VERY HIGH"];
+        const resolvedDemand = VALID_DEMAND.includes(demandLevel) ? demandLevel : "High";
+
         const created = await JobRole.create({
             title: String(title).trim(),
             domain: String(domain).trim(),
-            description: description || null,
-            minExperience: minExperience || "0-2 Years",
-            avgSalary: avgSalary || "₹4.5 - 8.0 LPA",
-            demandLevel: demandLevel || "High",
+            description: description ? String(description).trim() : null,
+            minExperience: minExperience ? String(minExperience).trim() : "0-2 Years",
+            avgSalary: avgSalary ? String(avgSalary).trim() : "₹4.5 - 8.0 LPA",
+            demandLevel: resolvedDemand,
         });
         return res.status(201).json({
             jobRole: {
@@ -284,6 +311,9 @@ router.post("/job-roles", async (req, res) => {
             },
         });
     } catch (error) {
+        if (error?.code === 11000) {
+            return res.status(400).json({ error: "A job role with this title already exists" });
+        }
         console.error("Admin job-roles POST error:", error);
         return res.status(500).json({ error: "Failed to create job role" });
     }
@@ -296,8 +326,11 @@ router.delete("/job-roles", async (req, res) => {
         if (!id || !mongoose.Types.ObjectId.isValid(id)) {
             return res.status(400).json({ error: "Valid job role ID required" });
         }
+        const deleted = await JobRole.findByIdAndDelete(id);
+        if (!deleted) {
+            return res.status(404).json({ error: "Job role not found" });
+        }
         await Promise.all([
-            JobRole.findByIdAndDelete(id),
             JobSkillRequirement.deleteMany({ jobRoleId: id }),
             Assessment.deleteMany({ jobRoleId: id }),
         ]);
@@ -373,18 +406,23 @@ router.post("/courses", async (req, res) => {
             jobRoleId,
         } = req.body || {};
 
-        if (!name) {
+        if (!name || !String(name).trim()) {
             return res.status(400).json({ error: "Course name is required" });
+        }
+        const normalizedDifficulty = String(difficulty || "BEGINNER").trim().toUpperCase();
+        const VALID_DIFF = ["BEGINNER", "INTERMEDIATE", "ADVANCED"];
+        if (!VALID_DIFF.includes(normalizedDifficulty)) {
+            return res.status(400).json({ error: "Invalid difficulty level" });
         }
 
         const created = await TrainingCourse.create({
             name: String(name).trim(),
-            description: description || null,
-            provider: provider || "NSDC / PMKVY Partner",
-            difficulty: difficulty || "BEGINNER",
-            duration: duration || "8 Weeks",
-            eligibility: eligibility || "10+2 / ITI / Diploma",
-            category: category || "Web Development",
+            description: description ? String(description).trim() : null,
+            provider: provider ? String(provider).trim() : "NSDC / PMKVY Partner",
+            difficulty: normalizedDifficulty,
+            duration: duration ? String(duration).trim() : "8 Weeks",
+            eligibility: eligibility ? String(eligibility).trim() : "10+2 / ITI / Diploma",
+            category: category ? String(category).trim() : "Web Development",
             jobRoleId:
                 jobRoleId && mongoose.Types.ObjectId.isValid(jobRoleId) ? jobRoleId : null,
             isDemo: true,
@@ -406,8 +444,11 @@ router.delete("/courses", async (req, res) => {
         if (!id || !mongoose.Types.ObjectId.isValid(id)) {
             return res.status(400).json({ error: "Valid course ID required" });
         }
+        const deleted = await TrainingCourse.findByIdAndDelete(id);
+        if (!deleted) {
+            return res.status(404).json({ error: "Course not found" });
+        }
         await Promise.all([
-            TrainingCourse.findByIdAndDelete(id),
             CourseSkill.deleteMany({ courseId: id }),
             CourseEnrollment.deleteMany({ courseId: id }),
         ]);

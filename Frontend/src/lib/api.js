@@ -18,13 +18,13 @@ export function getAuthToken() {
 export function setAuthToken(token) {
     if (typeof window === "undefined") return;
     try {
+        const secureFlag = window.location.protocol === "https:" ? "; Secure" : "";
         if (token) {
             localStorage.setItem("pmkvy_auth_token", token);
-            const secureFlag = window.location.protocol === "https:" ? "; Secure" : "";
             document.cookie = `pmkvy_token=${encodeURIComponent(token)}; path=/; max-age=604800; SameSite=Lax${secureFlag}`;
         } else {
             localStorage.removeItem("pmkvy_auth_token");
-            document.cookie = "pmkvy_token=; path=/; max-age=0; SameSite=Lax";
+            document.cookie = `pmkvy_token=; path=/; max-age=0; SameSite=Lax${secureFlag}`;
         }
     } catch {
         // Ignore storage errors in restricted contexts
@@ -57,7 +57,7 @@ export async function apiFetch(path, options = {}) {
         const publicPaths = ["/", "/login", "/register", "/forgot-password"];
         if (!publicPaths.includes(window.location.pathname)) {
             const callbackUrl = encodeURIComponent(window.location.pathname || "/dashboard");
-            window.location.href = `/login?callbackUrl=${callbackUrl}`;
+            window.location.assign(`/login?callbackUrl=${callbackUrl}`);
         }
     }
 

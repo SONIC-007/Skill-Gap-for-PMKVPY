@@ -7,6 +7,7 @@ import dotenv from "dotenv";
 import express from "express";
 import cors from "cors";
 import cookieParser from "cookie-parser";
+import mongoose from "mongoose";
 import { connectToDatabase, isMongoConnected } from "./config/db.js";
 import authRouter from "./routes/auth.js";
 import dashboardRouter from "./routes/dashboard.js";
@@ -32,8 +33,30 @@ dotenv.config({ path: path.resolve(BACKEND_DIR, ".env") });
 const PORT = Number(process.env.PORT) || 3000;
 const DEV = process.env.NODE_ENV !== "production";
 
+if (!DEV) {
+    if (!process.env.MONGODB_URI) {
+        console.warn("[Startup Warning] MONGODB_URI is not set in production environment.");
+    }
+    if (!process.env.JWT_SECRET && !process.env.NEXTAUTH_SECRET) {
+        console.warn("[Startup Warning] JWT_SECRET is not set in production environment.");
+    }
+    if (!process.env.GEMINI_API_KEY) {
+        console.warn("[Startup Warning] GEMINI_API_KEY is not set; AI resume analyser will run in local QP-NOS fallback mode.");
+    }
+}
+
 const app = express();
+app.set("trust proxy", 1);
+app.disable("x-powered-by");
+
 const httpServer = http.createServer(app);
+
+app.use((req, res, next) => {
+    res.setHeader("X-Content-Type-Options", "nosniff");
+    res.setHeader("X-Frame-Options", "SAMEORIGIN");
+    res.setHeader("Referrer-Policy", "strict-origin-when-cross-origin");
+    next();
+});
 
 const rawOrigins = process.env.FRONTEND_URL || `http://localhost:${PORT},http://127.0.0.1:${PORT}`;
 const allowedOrigins = rawOrigins
@@ -41,18 +64,37 @@ const allowedOrigins = rawOrigins
     .map((o) => o.trim().replace(/\/$/, ""))
     .filter(Boolean);
 
-const apiCors = cors({
-    origin(origin, callback) {
-        if (!origin) return callback(null, true);
-        const normalized = origin.replace(/\/$/, "");
-        if (allowedOrigins.includes("*") || allowedOrigins.includes(normalized)) {
-            return callback(null, true);
+const apiCors = cors((req, callback) => {
+    const origin = req.header("Origin");
+    const corsOptions = {
+        credentials: true,
+        allowedHeaders: ["Content-Type", "Authorization"],
+        methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
+    };
+
+    if (!origin) {
+        return callback(null, { ...corsOptions, origin: true });
+    }
+
+    const normalized = origin.replace(/\/$/, "");
+    let isSameHost = false;
+    try {
+        const originUrl = new URL(origin);
+        const reqHost = req.get("x-forwarded-host") || req.get("host");
+        if (reqHost && originUrl.host.toLowerCase() === reqHost.toLowerCase()) {
+            isSameHost = true;
         }
-        return callback(new Error(`Origin ${origin} not allowed by CORS`));
-    },
-    credentials: true,
-    allowedHeaders: ["Content-Type", "Authorization"],
-    methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
+    } catch {
+        isSameHost = false;
+    }
+
+    if (isSameHost || allowedOrigins.includes("*") || allowedOrigins.includes(normalized)) {
+        return callback(null, { ...corsOptions, origin: true });
+    }
+
+    const err = new Error(`Origin ${origin} not allowed by CORS`);
+    err.status = 403;
+    return callback(err);
 });
 
 app.get("/health", async (req, res) => {
@@ -72,7 +114,7 @@ app.get("/health", async (req, res) => {
 // Scoped JSON/cookie parsing for Express /api routes only (leaves Next.js request bodies untouched)
 const apiRouter = express.Router();
 apiRouter.use(apiCors);
-apiRouter.use(express.json({ limit: "2mb" }));
+apiRouter.use(express.json({ limit: "6mb" }));
 apiRouter.use(cookieParser());
 
 apiRouter.use("/", authRouter);
@@ -89,6 +131,11 @@ apiRouter.use("/admin", adminRouter);
 apiRouter.use((req, res) => {
     res.status(404).json({ error: `API route not found: ${req.method} ${req.originalUrl}` });
 });
+apiRouter.use((err, req, res, next) => {
+    if (res.headersSent) return next(err);
+    const status = err.status || (err.type === "entity.too.large" ? 413 : 500);
+    return res.status(status).json({ error: err.message || "API request error" });
+});
 
 app.use("/api", apiRouter);
 
@@ -99,7 +146,7 @@ async function startServer() {
         const nextApp = next({
             dev: DEV,
             dir: FRONTEND_DIR,
-            turbopack: true,
+            ...(DEV ? { turbopack: true } : {}),
             port: PORT,
             httpServer,
         });
@@ -107,10 +154,12 @@ async function startServer() {
 
         await nextApp.prepare();
 
-        const upgradeHandler = nextApp.getUpgradeHandler();
-        httpServer.on("upgrade", (req, socket, head) => {
-            upgradeHandler(req, socket, head);
-        });
+        if (typeof nextApp.getUpgradeHandler === "function") {
+            const upgradeHandler = nextApp.getUpgradeHandler();
+            httpServer.on("upgrade", (req, socket, head) => {
+                upgradeHandler(req, socket, head);
+            });
+        }
 
         app.use((req, res) => nextHandler(req, res));
     }
@@ -118,7 +167,7 @@ async function startServer() {
     app.use((err, req, res, next) => {
         console.error("Unhandled server error:", err.message);
         if (res.headersSent) return next(err);
-        res.status(500).json({ error: err.message || "Internal server error" });
+        res.status(err.status || 500).json({ error: err.message || "Internal server error" });
     });
 
     httpServer.listen(PORT, () => {
@@ -131,6 +180,22 @@ async function startServer() {
             );
         });
     });
+
+    const shutdown = (signal) => {
+        console.log(`[Server] Received ${signal}. Shutting down gracefully...`);
+        httpServer.close(async () => {
+            try {
+                await mongoose.disconnect();
+            } catch {
+                // Ignore disconnect errors on shutdown
+            }
+            process.exit(0);
+        });
+        setTimeout(() => process.exit(1), 8000).unref();
+    };
+
+    process.once("SIGTERM", () => shutdown("SIGTERM"));
+    process.once("SIGINT", () => shutdown("SIGINT"));
 }
 
 startServer().catch((err) => {
