@@ -1,3 +1,4 @@
+// [BACKEND] Route: GET /api/career | Used by: Frontend/src/app/career-path/page.jsx | Models: CandidateSkill, JobRole
 import { Router } from "express";
 import mongoose from "mongoose";
 import { connectToDatabase } from "../config/db.js";

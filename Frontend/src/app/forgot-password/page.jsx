@@ -1,4 +1,5 @@
 "use client";
+// [FRONTEND] Recovery & Demo Credentials Helper | Route: /forgot-password | Uses: UI Input/Button
 import { useState } from "react";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";

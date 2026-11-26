@@ -1,4 +1,5 @@
 "use client";
+// [FRONTEND] Workspace Frame & Footer | Used by: all workspace & admin pages | Uses: TopNavbar (sidebar.jsx), auth-context.jsx
 import { useSession } from "@/lib/auth-context";
 import { useRouter } from "next/navigation";
 import Link from "next/link";

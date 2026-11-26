@@ -1,5 +1,5 @@
 "use client";
-
+// [FRONTEND] NSQF Career Path Explorer | Route: /career-path | Uses: GET /api/career, DashboardLayout
 import { useState, useEffect } from "react";
 import Link from "next/link";
 import { apiFetch } from "@/lib/api";

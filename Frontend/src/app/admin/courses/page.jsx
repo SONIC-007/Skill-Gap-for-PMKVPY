@@ -1,5 +1,5 @@
 "use client";
-
+// [FRONTEND] Admin Courses Manager | Route: /admin/courses | Uses: GET/POST/DELETE /api/admin/courses, DashboardLayout
 import { useState, useEffect, useCallback } from "react";
 import Link from "next/link";
 import { apiFetch } from "@/lib/api";

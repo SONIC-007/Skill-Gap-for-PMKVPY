@@ -1,4 +1,5 @@
 "use client";
+// [FRONTEND] Domain Skill Assessment Wizard | Route: /assessment | Uses: GET/POST /api/assessment, DashboardLayout
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";

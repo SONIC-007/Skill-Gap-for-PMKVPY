@@ -1,3 +1,4 @@
+// [BACKEND] Route: GET/PUT /api/profile | Used by: Frontend/src/app/profile/page.jsx | Models: User, CandidateProfile
 import { Router } from "express";
 import mongoose from "mongoose";
 import { connectToDatabase } from "../config/db.js";

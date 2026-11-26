@@ -1,4 +1,5 @@
 "use client";
+// [FRONTEND] Login Page | Route: /login | Uses: auth-context (POST /api/auth/login) & UI Input/Button
 import { useState, Suspense } from "react";
 import { useSession } from "@/lib/auth-context";
 import { useRouter, useSearchParams } from "next/navigation";

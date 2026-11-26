@@ -1,4 +1,9 @@
-import "dotenv/config";
+// [BACKEND] Unified Single Server Entry (Port 3000) | Mounts Express /api/* + /health and Next.js Frontend/ handler
+import http from "node:http";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
+import { createRequire } from "node:module";
+import dotenv from "dotenv";
 import express from "express";
 import cors from "cors";
 import cookieParser from "cookie-parser";
@@ -15,40 +20,39 @@ import careerRouter from "./routes/career.js";
 import resumeAnalyserRouter from "./routes/resumeAnalyser.js";
 import adminRouter from "./routes/admin.js";
 
-const app = express();
-const PORT = Number(process.env.PORT) || 5000;
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+const BACKEND_DIR = path.resolve(__dirname, "..");
+const REPO_ROOT = path.resolve(BACKEND_DIR, "..");
+const FRONTEND_DIR = path.resolve(REPO_ROOT, "Frontend");
 
-const rawOrigins = process.env.FRONTEND_URL || "http://localhost:3000,http://127.0.0.1:3000";
+// Load backend/.env explicitly regardless of whether server is launched from repo root or backend/
+dotenv.config({ path: path.resolve(BACKEND_DIR, ".env") });
+
+const PORT = Number(process.env.PORT) || 3000;
+const DEV = process.env.NODE_ENV !== "production";
+
+const app = express();
+const httpServer = http.createServer(app);
+
+const rawOrigins = process.env.FRONTEND_URL || `http://localhost:${PORT},http://127.0.0.1:${PORT}`;
 const allowedOrigins = rawOrigins
     .split(",")
     .map((o) => o.trim().replace(/\/$/, ""))
     .filter(Boolean);
 
-app.use(
-    cors({
-        origin(origin, callback) {
-            if (!origin) return callback(null, true);
-            const normalized = origin.replace(/\/$/, "");
-            if (allowedOrigins.includes("*") || allowedOrigins.includes(normalized)) {
-                return callback(null, true);
-            }
-            return callback(new Error(`Origin ${origin} not allowed by CORS`));
-        },
-        credentials: true,
-        allowedHeaders: ["Content-Type", "Authorization"],
-        methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
-    })
-);
-
-app.use(express.json({ limit: "2mb" }));
-app.use(cookieParser());
-
-app.get("/", (req, res) => {
-    res.json({
-        service: "PMKVY Skill Gap Analyser Backend API",
-        database: "MongoDB (Mongoose)",
-        status: "running",
-    });
+const apiCors = cors({
+    origin(origin, callback) {
+        if (!origin) return callback(null, true);
+        const normalized = origin.replace(/\/$/, "");
+        if (allowedOrigins.includes("*") || allowedOrigins.includes(normalized)) {
+            return callback(null, true);
+        }
+        return callback(new Error(`Origin ${origin} not allowed by CORS`));
+    },
+    credentials: true,
+    allowedHeaders: ["Content-Type", "Authorization"],
+    methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
 });
 
 app.get("/health", async (req, res) => {
@@ -59,35 +63,77 @@ app.get("/health", async (req, res) => {
     }
     res.json({
         status: "ok",
+        mode: "unified-single-server",
         mongoConnected: isMongoConnected(),
         aiConfigured: Boolean(process.env.GEMINI_API_KEY),
     });
 });
 
-app.use("/api", authRouter);
-app.use("/api/dashboard", dashboardRouter);
-app.use("/api/profile", profileRouter);
-app.use("/api/assessment", assessmentRouter);
-app.use("/api/skill-gap", skillGapRouter);
-app.use("/api/courses", coursesRouter);
-app.use("/api/enroll", enrollRouter);
-app.use("/api/progress", progressRouter);
-app.use("/api/career", careerRouter);
-app.use("/api/ai-resume-analyser", resumeAnalyserRouter);
-app.use("/api/admin", adminRouter);
+// Scoped JSON/cookie parsing for Express /api routes only (leaves Next.js request bodies untouched)
+const apiRouter = express.Router();
+apiRouter.use(apiCors);
+apiRouter.use(express.json({ limit: "2mb" }));
+apiRouter.use(cookieParser());
 
-app.use((req, res) => {
-    res.status(404).json({ error: `Route not found: ${req.method} ${req.originalUrl}` });
+apiRouter.use("/", authRouter);
+apiRouter.use("/dashboard", dashboardRouter);
+apiRouter.use("/profile", profileRouter);
+apiRouter.use("/assessment", assessmentRouter);
+apiRouter.use("/skill-gap", skillGapRouter);
+apiRouter.use("/courses", coursesRouter);
+apiRouter.use("/enroll", enrollRouter);
+apiRouter.use("/progress", progressRouter);
+apiRouter.use("/career", careerRouter);
+apiRouter.use("/ai-resume-analyser", resumeAnalyserRouter);
+apiRouter.use("/admin", adminRouter);
+apiRouter.use((req, res) => {
+    res.status(404).json({ error: `API route not found: ${req.method} ${req.originalUrl}` });
 });
 
-app.use((err, req, res, next) => {
-    console.error("Unhandled Express error:", err.message);
-    res.status(500).json({ error: err.message || "Internal server error" });
-});
+app.use("/api", apiRouter);
 
-app.listen(PORT, () => {
-    console.log(`[Backend] Express API listening on http://localhost:${PORT}`);
-    connectToDatabase().catch(() => {
-        console.warn("[Backend] Started without active MongoDB yet — configure MONGODB_URI in backend/.env");
+async function startServer() {
+    if (process.env.API_ONLY !== "true") {
+        const frontendRequire = createRequire(path.resolve(FRONTEND_DIR, "package.json"));
+        const next = frontendRequire("next");
+        const nextApp = next({
+            dev: DEV,
+            dir: FRONTEND_DIR,
+            turbopack: true,
+            port: PORT,
+            httpServer,
+        });
+        const nextHandler = nextApp.getRequestHandler();
+
+        await nextApp.prepare();
+
+        const upgradeHandler = nextApp.getUpgradeHandler();
+        httpServer.on("upgrade", (req, socket, head) => {
+            upgradeHandler(req, socket, head);
+        });
+
+        app.use((req, res) => nextHandler(req, res));
+    }
+
+    app.use((err, req, res, next) => {
+        console.error("Unhandled server error:", err.message);
+        if (res.headersSent) return next(err);
+        res.status(500).json({ error: err.message || "Internal server error" });
     });
+
+    httpServer.listen(PORT, () => {
+        console.log(
+            `[Server] Unified Frontend + Backend listening on http://localhost:${PORT} (${DEV ? "development" : "production"})`
+        );
+        connectToDatabase().catch(() => {
+            console.warn(
+                "[Server] Started without active MongoDB yet — configure MONGODB_URI in backend/.env"
+            );
+        });
+    });
+}
+
+startServer().catch((err) => {
+    console.error("Failed to start unified server:", err);
+    process.exit(1);
 });

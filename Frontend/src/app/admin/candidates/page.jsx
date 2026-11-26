@@ -1,5 +1,5 @@
 "use client";
-
+// [FRONTEND] Admin Candidate Directory | Route: /admin/candidates | Uses: GET /api/admin/candidates, DashboardLayout
 import { useState, useEffect } from "react";
 import Link from "next/link";
 import { apiFetch } from "@/lib/api";

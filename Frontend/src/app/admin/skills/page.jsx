@@ -1,5 +1,5 @@
 "use client";
-
+// [FRONTEND] Admin Skills Matrix Manager | Route: /admin/skills | Uses: GET/POST/DELETE /api/admin/skills, DashboardLayout
 import { useState, useEffect, useCallback } from "react";
 import Link from "next/link";
 import { apiFetch } from "@/lib/api";

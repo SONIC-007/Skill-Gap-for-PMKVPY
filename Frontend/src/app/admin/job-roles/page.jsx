@@ -1,5 +1,5 @@
 "use client";
-
+// [FRONTEND] Admin QP-NOS Job Roles Manager | Route: /admin/job-roles | Uses: GET/POST/DELETE /api/admin/job-roles, DashboardLayout
 import { useState, useEffect, useCallback } from "react";
 import Link from "next/link";
 import { apiFetch } from "@/lib/api";

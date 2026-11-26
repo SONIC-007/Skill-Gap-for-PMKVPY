@@ -1,5 +1,5 @@
 "use client";
-
+// [FRONTEND] Admin Telemetry Console | Route: /admin | Uses: GET /api/admin/stats, DashboardLayout, Recharts
 import { useState, useEffect } from "react";
 import Link from "next/link";
 import { apiFetch } from "@/lib/api";

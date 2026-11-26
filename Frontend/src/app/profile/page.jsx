@@ -1,5 +1,5 @@
 "use client";
-
+// [FRONTEND] Candidate Profile Settings | Route: /profile | Uses: GET/PUT /api/profile, DashboardLayout
 import { useState, useEffect } from "react";
 import Link from "next/link";
 import { apiFetch } from "@/lib/api";

@@ -1,3 +1,4 @@
+// [BACKEND] Route: /api/admin/{stats,skills,job-roles,courses,candidates} | Used by: Frontend/src/app/admin/** | Requires: ADMIN role
 import { Router } from "express";
 import mongoose from "mongoose";
 import { connectToDatabase } from "../config/db.js";

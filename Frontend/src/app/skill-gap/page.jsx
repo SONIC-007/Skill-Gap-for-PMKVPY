@@ -1,4 +1,5 @@
 "use client";
+// [FRONTEND] Skill Gap Diagnostic Matrix | Route: /skill-gap | Uses: GET /api/skill-gap, DashboardLayout, Recharts
 import { useEffect, useState, Suspense } from "react";
 import { useSearchParams } from "next/navigation";
 import Link from "next/link";

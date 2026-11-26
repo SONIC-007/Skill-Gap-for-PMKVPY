@@ -1,4 +1,6 @@
 "use client";
+// [FRONTEND] Global Auth Context | Used by: providers.jsx, login/page.jsx, dashboard-layout.jsx, resume-analyser/page.jsx
+// Calls: POST /api/auth/login, GET /api/auth/me, POST /api/auth/logout
 
 import { createContext, useCallback, useContext, useEffect, useState } from "react";
 import { apiFetch, getApiBaseUrl, getAuthToken, setAuthToken } from "@/lib/api";
@@ -15,36 +17,41 @@ export function AuthProvider({ children }) {
     const [user, setUser] = useState(null);
     const [status, setStatus] = useState("loading");
 
-    const refreshSession = useCallback(async () => {
+    const fetchSessionUser = useCallback(async () => {
         const token = getAuthToken();
         if (!token) {
-            setUser(null);
-            setStatus("unauthenticated");
-            return;
+            return null;
         }
-
         try {
             const res = await apiFetch("/api/auth/me");
             if (res.ok) {
                 const payload = await res.json();
-                if (payload?.user) {
-                    setUser(payload.user);
-                    setStatus("authenticated");
-                    return;
-                }
+                if (payload?.user) return payload.user;
             }
             setAuthToken(null);
-            setUser(null);
-            setStatus("unauthenticated");
+            return null;
         } catch {
-            setUser(null);
-            setStatus("unauthenticated");
+            return null;
         }
     }, []);
 
+    const refreshSession = useCallback(async () => {
+        const verifiedUser = await fetchSessionUser();
+        setUser(verifiedUser);
+        setStatus(verifiedUser ? "authenticated" : "unauthenticated");
+    }, [fetchSessionUser]);
+
     useEffect(() => {
-        refreshSession();
-    }, [refreshSession]);
+        let active = true;
+        fetchSessionUser().then((verifiedUser) => {
+            if (!active) return;
+            setUser(verifiedUser);
+            setStatus(verifiedUser ? "authenticated" : "unauthenticated");
+        });
+        return () => {
+            active = false;
+        };
+    }, [fetchSessionUser]);
 
     const signInWithCredentials = useCallback(async ({ email, password }) => {
         try {

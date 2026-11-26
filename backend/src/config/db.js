@@ -1,3 +1,4 @@
+// [BACKEND] Pure MongoDB/Mongoose Connector | Used by: server.js, all routes/*, services/aiAnalyser.js, scripts/seed-mongoose.js
 import mongoose from "mongoose";
 
 let cached = globalThis.__pmkvyMongoose || {

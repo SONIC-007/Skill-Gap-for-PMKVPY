@@ -1,3 +1,4 @@
+// [BACKEND] JWT Auth Middleware (requireAuth, requireAdmin) | Used by: routes/* | Verified against pmkvy_token / Bearer header
 import jwt from "jsonwebtoken";
 
 function getJwtSecret() {

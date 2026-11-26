@@ -1,4 +1,6 @@
-const RAW_API_BASE = (process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000").replace(/\/$/, "");
+// [FRONTEND] Client HTTP & Auth Token Helper | Used by: Frontend/src/lib/auth-context.jsx and all Frontend/src/app/** pages
+// Same-origin by default ("" -> /api/* on port 3000); override NEXT_PUBLIC_API_URL only if splitting hosts.
+const RAW_API_BASE = (process.env.NEXT_PUBLIC_API_URL || "").replace(/\/$/, "");
 
 export function getApiBaseUrl() {
     return RAW_API_BASE;

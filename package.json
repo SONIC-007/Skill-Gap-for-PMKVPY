@@ -1,0 +1,13 @@
+{
+  "name": "pmkvy-skill-gap-analyser",
+  "version": "1.0.0",
+  "private": true,
+  "description": "PMKVY Skill Gap Analyser — Unified single-server Next.js Frontend + Express/Mongoose MongoDB Backend",
+  "scripts": {
+    "dev": "node --watch-path=backend/src backend/src/server.js",
+    "build": "npm --prefix Frontend run build",
+    "start": "node backend/scripts/start-prod.js",
+    "seed": "npm --prefix backend run seed",
+    "install:all": "npm --prefix backend install && npm --prefix Frontend install"
+  }
+}

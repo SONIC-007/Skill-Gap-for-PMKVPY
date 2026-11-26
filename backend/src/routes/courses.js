@@ -1,3 +1,4 @@
+// [BACKEND] Route: GET /api/courses | Used by: Frontend/src/app/courses/page.jsx | Models: TrainingCourse, CourseEnrollment, CandidateSkill
 import { Router } from "express";
 import mongoose from "mongoose";
 import { connectToDatabase } from "../config/db.js";

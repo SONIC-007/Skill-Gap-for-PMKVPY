@@ -1,3 +1,4 @@
+// [BACKEND] Route: POST /api/enroll | Used by: Frontend/src/app/courses/page.jsx | Models: CourseEnrollment
 import { Router } from "express";
 import mongoose from "mongoose";
 import { connectToDatabase } from "../config/db.js";

@@ -1,5 +1,5 @@
 "use client";
-
+// [FRONTEND] Upskilling & Learning Progress Tracker | Route: /progress | Uses: GET/PUT /api/progress, DashboardLayout, Recharts
 import { useState, useEffect } from "react";
 import Link from "next/link";
 import { apiFetch } from "@/lib/api";

@@ -1,5 +1,5 @@
 "use client";
-
+// [FRONTEND] PMKVY 4.0 Course Catalog & Enrollment | Route: /courses | Uses: GET /api/courses, POST /api/enroll, DashboardLayout
 import { useState, useEffect, useCallback } from "react";
 import Link from "next/link";
 import { apiFetch } from "@/lib/api";

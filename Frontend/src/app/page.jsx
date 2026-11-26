@@ -1,3 +1,4 @@
+// [FRONTEND] Public Landing Page | Route: / | Uses: UI Button, Lucide icons -> routes CTAs via /login?callbackUrl=...
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import {

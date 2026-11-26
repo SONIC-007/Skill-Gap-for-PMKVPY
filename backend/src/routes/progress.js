@@ -1,3 +1,4 @@
+// [BACKEND] Route: GET/PUT /api/progress | Used by: Frontend/src/app/progress/page.jsx | Models: CourseEnrollment, CourseSkill, CandidateSkill, LearningProgress
 import { Router } from "express";
 import mongoose from "mongoose";
 import { connectToDatabase } from "../config/db.js";

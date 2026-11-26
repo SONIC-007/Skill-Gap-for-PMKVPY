@@ -1,3 +1,4 @@
+// [BACKEND] Route: GET /api/skill-gap | Used by: Frontend/src/app/skill-gap/page.jsx | Models: JobRole, Assessment, CandidateSkill
 import { Router } from "express";
 import mongoose from "mongoose";
 import { connectToDatabase } from "../config/db.js";

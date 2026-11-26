@@ -1,3 +1,4 @@
+// [FRONTEND] Edge Session Guard | Protects workspace & /admin routes using pmkvy_token cookie set by Frontend/src/lib/api.js
 import { NextResponse } from "next/server";
 
 export function middleware(req) {

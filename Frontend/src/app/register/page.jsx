@@ -1,4 +1,5 @@
 "use client";
+// [FRONTEND] Candidate Registration Page | Route: /register | Uses: apiFetch (POST /api/register)
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";

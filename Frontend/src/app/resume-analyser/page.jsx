@@ -1,4 +1,5 @@
 "use client";
+// [FRONTEND] Dual AI Resume Analyser (QP-NOS & Job Link/JD) | Route: /resume-analyser | Uses: GET/POST /api/ai-resume-analyser, POST /api/ai-resume-analyser/save, document-parser.js, auth-context.jsx
 import { useState, useEffect, useRef } from "react";
 import { DashboardLayout } from "@/components/layout/dashboard-layout";
 import { Button } from "@/components/ui/button";

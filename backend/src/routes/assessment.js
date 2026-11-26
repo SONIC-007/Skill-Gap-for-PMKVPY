@@ -1,3 +1,4 @@
+// [BACKEND] Route: GET/POST /api/assessment | Used by: Frontend/src/app/assessment/page.jsx | Models: JobRole, AssessmentQuestion, Assessment, AssessmentResponse, CandidateSkill
 import { Router } from "express";
 import mongoose from "mongoose";
 import { connectToDatabase } from "../config/db.js";

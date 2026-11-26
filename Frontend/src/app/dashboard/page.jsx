@@ -1,4 +1,5 @@
 "use client";
+// [FRONTEND] Candidate Overview Dashboard | Route: /dashboard | Uses: GET /api/dashboard, DashboardLayout, Recharts
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { apiFetch } from "@/lib/api";

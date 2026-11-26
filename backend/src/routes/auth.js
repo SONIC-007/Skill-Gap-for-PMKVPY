@@ -1,3 +1,4 @@
+// [BACKEND] Route: /api/auth/login, /api/register, /api/auth/me, /api/auth/logout | Used by: Frontend login/page.jsx, register/page.jsx, auth-context.jsx | Models: User, CandidateProfile
 import { Router } from "express";
 import bcrypt from "bcryptjs";
 import { connectToDatabase } from "../config/db.js";

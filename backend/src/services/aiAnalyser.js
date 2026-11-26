@@ -1,3 +1,4 @@
+// [BACKEND] Google Gemini Flash/Gemma AI + Public Job URL Fetcher + QP-NOS Engine | Used by: routes/resumeAnalyser.js | Models: JobRole, TrainingCourse
 import dns from "node:dns/promises";
 import net from "node:net";
 import mongoose from "mongoose";
