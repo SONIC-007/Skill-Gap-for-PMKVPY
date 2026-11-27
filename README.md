@@ -23,7 +23,7 @@ Both `Frontend/` and `backend/` are cleanly separated at the folder level and ru
 
 ---
 
-## Quick Map: Frontend Pages → Backend Endpoints
+## Quick Map: Frontend Pages → Backend Endpoints.
 
 | `[FRONTEND]` Page | `[BACKEND]` Endpoint(s) Used | MongoDB Models Touched |
 |---|---|---|
