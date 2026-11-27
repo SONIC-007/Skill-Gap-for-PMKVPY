@@ -2,6 +2,8 @@
 
 AI-assisted **PMKVY 4.0 & NSQF Skill Gap Analysis Platform** built cleanly with **Next.js 16**, **Express.js**, **MongoDB (Mongoose)**, and **Google Gemini AI**
 
+**LIVE LINK** -> https://skill-gap-for-pmkvpy.onrender.com
+
 Both `Frontend/` and `backend/` are cleanly separated at the folder level and run behind **one unified single server** on `http://localhost:3000`.
 
 ---
